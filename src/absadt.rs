@@ -45,6 +45,7 @@ use crate::info::{Pred, VarInfo};
 
 use crate::unsat_core::UnsatRes;
 
+mod approximations;
 mod chc;
 mod chc_solver;
 mod enc;
@@ -220,10 +221,13 @@ impl<'original> AbsConf<'original> {
         for n in (0..INIT_EXPANSION_DEPTH).rev() {
             log_info!("initializing encs: {}", n);
             let cex = self.instance.get_n_expansion(n);
-            match self.handle_cex(cex, true) {
-                Ok(x) => return Ok(x),
-                Err(_) => (),
+            if let Ok(x) = self.handle_cex(cex, true) {
+                return Ok(x);
             }
+            // match self.handle_cex(cex, true) {
+            //     Ok(x) => return Ok(x),
+            //     Err(_) => (),
+            // }
         }
         Ok(false)
     }
@@ -323,7 +327,7 @@ impl<'a> AbsConf<'a> {
                         new_args.push(approx_arg.idx);
                     }
                 } else {
-                    new_args.push(arg.clone());
+                    new_args.push(*arg);
                 }
             }
             (*pred, new_args)
@@ -347,18 +351,17 @@ impl<'a> AbsConf<'a> {
             }
         }
 
-        let res = chc::AbsClause {
+        chc::AbsClause {
             vars: new_vars,
             lhs_term,
             lhs_preds,
             rhs,
-        };
-        res
+        }
     }
     fn encode_sig(&self, sig: &VarMap<Typ>) -> VarMap<Typ> {
         let mut new_sig = VarMap::new();
         for ty in sig.iter() {
-            if let Some(enc) = self.encs.get(&ty) {
+            if let Some(enc) = self.encs.get(ty) {
                 enc.push_approx_typs(&mut new_sig)
             } else {
                 new_sig.push(ty.clone());
@@ -438,6 +441,7 @@ impl<'a> AbsConf<'a> {
         clauses: &mut Vec<chc::AbsClause>,
     ) -> BTreeMap<Typ, Vec<PrdIdx>> {
         let mut enc_map = BTreeMap::new();
+
         // prepare preds
         for (typ, enc) in self.encs.iter() {
             let mut ps = Vec::with_capacity(enc.n_params);
@@ -469,6 +473,7 @@ impl<'a> AbsConf<'a> {
                     // constr_name = cons
                     // appprox = \x. \l. l + 1
                     let approx = enc.approxs.get(constructor_name).unwrap();
+                    log_debug!("The approximation for {constructor_name} is {approx}");
                     let t = &approx.terms[idx];
                     let types = sels.iter().map(|(_, ty)| ty.to_type(Some(prms)).unwrap());
                     let clause =
@@ -479,13 +484,16 @@ impl<'a> AbsConf<'a> {
         }
         enc_map
     }
-    pub fn encode(&self) -> chc::AbsInstance {
+
+    /// Encode the function signature from ADT+LIA to LIA
+    pub fn encode(&'_ self) -> chc::AbsInstance<'_> {
         let mut preds = self
             .instance
             .preds
             .iter()
             .map(|p| self.encode_pred(p))
             .collect();
+
         let mut clauses2 = Vec::new();
 
         let enc_map = self.encoder_preds(&mut preds, &mut clauses2);
