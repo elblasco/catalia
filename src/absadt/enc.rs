@@ -83,6 +83,32 @@ impl Approx {
             terms: vec![term::int_zero()],
         }
     }
+
+    /// If-the-else for nil (of type Int List).
+    ///
+    /// Used for tests.
+    pub fn if_nil() -> Self {
+        todo!();
+        Approx::len_cons()
+    }
+
+    pub fn if_cons() -> Self {
+        todo!();
+        let mut infos = VarInfos::new();
+
+        let ite_idx = infos.next_index();
+        let info = VarInfo::new("l".to_string(), typ::int(), ite_idx);
+        infos.push(info);
+
+        // l + 1
+        let l = term::var(ite_idx, typ::int());
+        let one = term::cst(val::int(1));
+        let l_plus_one = term::app(Op::Add, vec![l, one]);
+        Self {
+            args: infos,
+            terms: vec![l_plus_one],
+        }
+    }
 }
 
 pub trait Approximation {
@@ -164,16 +190,28 @@ impl<A: Approximation> Enc<A> {
         introduced
     }
 
-    pub fn len_ilist(ilist_typ: Typ) -> Enc<Approx> {
-        let mut approxs = BTreeMap::new();
-        approxs.insert("cons".to_string(), Approx::len_cons());
-        approxs.insert("nil".to_string(), Approx::len_nil());
-        Enc {
-            typ: ilist_typ,
-            n_params: 1,
-            approxs,
-        }
-    }
+    // pub fn len_ilist(ilist_typ: Typ) -> Enc<Approx> {
+    //     let mut approxs = BTreeMap::new();
+    //     approxs.insert("cons".to_string(), Approx::len_cons());
+    //     approxs.insert("nil".to_string(), Approx::len_nil());
+    //     Enc {
+    //         typ: ilist_typ,
+    //         n_params: 1,
+    //         approxs,
+    //     }
+    // }
+
+    // pub fn if_ilist() -> Encoder {
+    // 	let mut approxs = BTreeMap::new();
+    //     approxs.insert("cons".to_string(), Approx::len_cons());
+    //     approxs.insert("nil".to_string(), Approx::len_nil());
+    //     Enc {
+    //         typ: ilist_typ,
+    //         n_params: 1,
+    //         approxs,
+    //     }
+    // }
+
     fn get_ith_enc_rdf_name(&self, i: usize) -> String {
         format!("{}-{}", self.generate_fun_name(), i)
     }
@@ -231,7 +269,7 @@ impl<A: Approximation> Enc<A> {
         // (ite (is-<tag> target_data) res cont)
         let check = term::dtyp_tst(tag, target_data);
         res.into_iter()
-            .zip(cont.into_iter())
+            .zip(cont)
             .map(|(res, cont)| term::app(Op::Ite, vec![check.clone(), res, cont]))
             .collect()
     }
@@ -310,6 +348,7 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
     pub fn new(encs: &'a BTreeMap<Typ, Enc<Approx>>) -> Self {
         Self { encs }
     }
+
     pub fn encode_val(&self, val: &Val) -> Vec<Term> {
         match val.get() {
             val::RVal::N(_) => todo!(),
@@ -331,6 +370,7 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
             },
         }
     }
+
     fn handle_app<EncodeVar>(
         &self,
         typ: &Typ,
@@ -380,7 +420,7 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
     where
         EncodeVar: Fn(&'a Typ, &'a VarIdx) -> Vec<Term>,
     {
-        match term.get() {
+        let ret = match term.get() {
             RTerm::Var(x, y) => {
                 encode_var(x, y)
             }
@@ -423,6 +463,8 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
                 //vec![term::fun(name.clone(), args)]
                 unimplemented!()
             }
-        }
+        };
+        log! { @debug | "encoding {} into {:?}", term.get(), ret};
+        ret
     }
 }
