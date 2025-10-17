@@ -1,5 +1,6 @@
 use super::chc::CEX;
 use super::enc::*;
+use crate::absadt::approximations::{LinearApprox, LinearIteApprox};
 use crate::common::{smt::FullParser as Parser, Cex as Model, *};
 use crate::info::VarInfo;
 
@@ -101,6 +102,75 @@ impl TemplateInfo {
         }
     }
 
+    fn new_linear_ite_approx(
+        encs: BTreeMap<Typ, Encoder>,
+        min: Option<i64>,
+        max: Option<i64>,
+    ) -> TemplateInfo {
+        let mut fvs = VarInfos::new();
+
+        let mut new_encs = BTreeMap::new();
+
+        // prepare LinearApprox for each constructor
+        for (typ, enc) in encs.iter() {
+            let mut approxs = BTreeMap::new();
+            for constr in typ.dtyp_inspect().unwrap().0.news.keys() {
+                let (ty, prms) = typ.dtyp_inspect().unwrap();
+                let mut coefs = VarMap::new();
+                // each constructor has a set of selectors
+                for (sel, ty) in ty.selectors_of(constr).unwrap() {
+                    let ty = ty.to_type(Some(prms)).unwrap();
+                    let n = match encs.get(&ty) {
+                        Some(enc_for_ty) => {
+                            // prepare template coefficients for all the approximations of the argument
+                            enc_for_ty.n_params + 1
+                        }
+                        None => {
+                            assert!(ty.is_int());
+                            1
+                        }
+                    };
+                    let name = format!("{constr}-{sel}");
+                    // prepare coefs for constr-sel, which involes generating new template variables manged
+                    // at the top level (`fvs`)
+                    let args = prepare_coefs(name, &mut fvs, n);
+                    coefs.push(args);
+                }
+
+                let mut approx = enc.approxs.get(constr).unwrap().clone();
+                let n_args: usize = coefs
+                    .iter()
+                    .map(|x| x.iter().map(|_| 1).sum::<usize>())
+                    .sum();
+                //let n_args: usize = coefs.iter().map(|_| 1).sum();
+                // println!("The computed args are {n_args}, while my chain result in {test_n_args}");
+                // insert dummy variables for newly-introduced approximated integers
+                for _ in 0..(n_args - approx.args.len()) {
+                    approx.args.push(VarInfo::new(
+                        format!("tmp-{}", approx.args.next_index()),
+                        typ::int(),
+                        approx.args.next_index(),
+                    ));
+                }
+                approxs.insert(
+                    constr.to_string(),
+                    Template::Linear(LinearApprox::new(coefs, &mut fvs, approx, min, max)),
+                );
+            }
+            let enc = Enc {
+                approxs,
+                typ: typ.clone(),
+                n_params: enc.n_params + 1,
+            };
+            new_encs.insert(typ.clone(), enc);
+        }
+
+        TemplateInfo {
+            parameters: fvs,
+            encs: new_encs,
+        }
+    }
+
     fn instantiate(&self, model: &Model) -> BTreeMap<Typ, Encoder> {
         self.encs
             .iter()
@@ -133,6 +203,7 @@ struct TemplateScheduler {
 enum TemplateType {
     BoundLinear { min: i64, max: i64 },
     Linear,
+    LinearIte { min: i64, max: i64 },
 }
 
 impl std::fmt::Display for TemplateType {
@@ -140,6 +211,7 @@ impl std::fmt::Display for TemplateType {
         match self {
             TemplateType::BoundLinear { min, max } => write!(f, "BoundLinear({}, {})", min, max),
             TemplateType::Linear => write!(f, "Linear"),
+            TemplateType::LinearIte { min, max } => write!(f, "LinearIte({}, {})", min, max),
         }
     }
 }
@@ -222,41 +294,53 @@ impl Encoder {
 }
 
 impl TemplateScheduler {
-    const N_TEMPLATES: usize = 8;
+    const N_TEMPLATES: usize = 1; //11;
 
     const TEMPLATE_SCHDEDULING: [TemplateSchedItem; Self::N_TEMPLATES] = [
+        // TemplateSchedItem {
+        //     n_encs: 1,
+        //     typ: TemplateType::BoundLinear { min: -1, max: 1 },
+        // },
         TemplateSchedItem {
             n_encs: 1,
-            typ: TemplateType::BoundLinear { min: -1, max: 1 },
+            typ: TemplateType::LinearIte { min: -1, max: 1 },
         },
-        TemplateSchedItem {
-            n_encs: 2,
-            typ: TemplateType::BoundLinear { min: -1, max: 1 },
-        },
-        TemplateSchedItem {
-            n_encs: 3,
-            typ: TemplateType::BoundLinear { min: -1, max: 1 },
-        },
-        TemplateSchedItem {
-            n_encs: 3,
-            typ: TemplateType::BoundLinear { min: -2, max: 2 },
-        },
-        TemplateSchedItem {
-            n_encs: 3,
-            typ: TemplateType::BoundLinear { min: -4, max: 4 },
-        },
-        TemplateSchedItem {
-            n_encs: 3,
-            typ: TemplateType::BoundLinear { min: -32, max: 32 },
-        },
-        TemplateSchedItem {
-            n_encs: 3,
-            typ: TemplateType::BoundLinear { min: -64, max: 64 },
-        },
-        TemplateSchedItem {
-            n_encs: 3,
-            typ: TemplateType::Linear,
-        },
+        // TemplateSchedItem {
+        //     n_encs: 2,
+        //     typ: TemplateType::BoundLinear { min: -1, max: 1 },
+        // },
+        // TemplateSchedItem {
+        //     n_encs: 2,
+        //     typ: TemplateType::LinearIte { min: -1, max: 1 },
+        // },
+        // TemplateSchedItem {
+        //     n_encs: 3,
+        //     typ: TemplateType::BoundLinear { min: -1, max: 1 },
+        // },
+        // TemplateSchedItem {
+        //     n_encs: 3,
+        //     typ: TemplateType::LinearIte { min: -1, max: 1 },
+        // },
+        // TemplateSchedItem {
+        //     n_encs: 3,
+        //     typ: TemplateType::BoundLinear { min: -2, max: 2 },
+        // },
+        // TemplateSchedItem {
+        //     n_encs: 3,
+        //     typ: TemplateType::BoundLinear { min: -4, max: 4 },
+        // },
+        // TemplateSchedItem {
+        //     n_encs: 3,
+        //     typ: TemplateType::BoundLinear { min: -32, max: 32 },
+        // },
+        // TemplateSchedItem {
+        //     n_encs: 3,
+        //     typ: TemplateType::BoundLinear { min: -64, max: 64 },
+        // },
+        // TemplateSchedItem {
+        //     n_encs: 3,
+        //     typ: TemplateType::Linear,
+        // },
     ];
 
     fn new(enc: BTreeMap<Typ, Encoder>) -> Self {
@@ -298,6 +382,9 @@ impl std::iter::Iterator for TemplateScheduler {
                     TemplateInfo::new_linear_approx(enc, Some(min), Some(max))
                 }
                 TemplateType::Linear => TemplateInfo::new_linear_approx(enc, None, None),
+                TemplateType::LinearIte { min, max } => {
+                    TemplateInfo::new_linear_ite_approx(enc, Some(min), Some(max))
+                }
             };
             log_info!("Template: {}", next_template);
             break Some(r);
@@ -315,12 +402,14 @@ pub struct LearnCtx<'a> {
 
 enum Template {
     Linear(LinearApprox),
+    LinearIte(LinearIteApprox),
 }
 
 impl Approximation for Template {
     fn apply(&self, arg_terms: &[Term]) -> Vec<Term> {
         match self {
             Template::Linear(approx) => approx.apply(arg_terms),
+            Template::LinearIte(approx) => approx.apply(arg_terms),
         }
     }
 }
@@ -329,96 +418,13 @@ impl Template {
     fn instantiate(&self, model: &Model) -> Approx {
         match self {
             Template::Linear(approx) => approx.instantiate(model),
+            Template::LinearIte(approx) => approx.instantiate(model),
         }
     }
     fn constraint(&self) -> Option<Term> {
         match self {
             Template::Linear(approx) => approx.constraint(),
-        }
-    }
-}
-
-struct LinearApprox {
-    /// Existing approx
-    approx: Approx,
-    // approx template
-    // n_args * num of its approx
-    coef: VarMap<VarMap<VarIdx>>,
-    cnst: VarIdx,
-    min: Option<i64>,
-    max: Option<i64>,
-}
-
-impl Approximation for LinearApprox {
-    fn apply(&self, arg_terms: &[Term]) -> Vec<Term> {
-        let mut terms = self.approx.apply(arg_terms);
-        let mut res = vec![term::var(self.cnst, typ::int())];
-        let coefs = self.coef.iter().flatten();
-        for (arg, coef) in arg_terms.into_iter().zip(coefs) {
-            let t = term::mul(vec![term::var(*coef, typ::int()), arg.clone()]);
-            res.push(t);
-        }
-        terms.push(term::add(res));
-        terms
-    }
-}
-
-impl LinearApprox {
-    fn constraint(&self) -> Option<Term> {
-        let mut asserts = Vec::new();
-        for c in self
-            .coef
-            .iter()
-            .flatten()
-            .chain(std::iter::once(&self.cnst))
-        {
-            if let Some(min) = self.min {
-                let t = term::le(term::int(min), term::var(*c, typ::int()));
-                asserts.push(t);
-            }
-
-            if let Some(max) = self.max {
-                let t = term::le(term::var(*c, typ::int()), term::int(max));
-                asserts.push(t);
-            }
-        }
-
-        Some(term::and(asserts))
-    }
-    fn instantiate(&self, model: &Model) -> Approx {
-        let mut approx = self.approx.clone();
-
-        let cnst = &model[self.cnst];
-        let mut terms = vec![term::val(cnst.clone())];
-        for (coef, arg) in self.coef.iter().flatten().zip(approx.args.iter()) {
-            let val = &model[*coef];
-            let val = term::val(val.clone());
-            let var = term::var(arg.idx, arg.typ.clone());
-            terms.push(term::mul(vec![val, var]));
-        }
-        let term = term::add(terms);
-        approx.terms.push(term);
-
-        approx
-    }
-}
-impl LinearApprox {
-    fn new(
-        coef: VarMap<VarMap<VarIdx>>,
-        fvs: &mut VarInfos,
-        approx: Approx,
-        min: Option<i64>,
-        max: Option<i64>,
-    ) -> Self {
-        let idx = fvs.next_index();
-        let info = VarInfo::new("const_value".to_string(), typ::int(), idx);
-        fvs.push(info);
-        Self {
-            coef,
-            cnst: idx,
-            approx,
-            min,
-            max,
+            Template::LinearIte(approx) => approx.constraint(),
         }
     }
 }
@@ -507,8 +513,9 @@ impl<'a> LearnCtx<'a> {
     ///
     /// Assumption: Data types are all defined.
     fn define_enc_funs(&mut self) -> Res<()> {
-        let ctx = super::enc::EncodeCtx::new(&self.original_encs);
+        let ctx = super::enc::EncodeCtx::new(self.original_encs);
         let mut funs = Vec::new();
+
         for enc in self.original_encs.values() {
             enc.generate_enc_fun(&ctx, &mut funs)?;
         }
@@ -535,7 +542,7 @@ impl<'a> LearnCtx<'a> {
         self.cex
             .define_assert_with_enc(&mut self.solver, &self.original_encs)?;
         if let Some(tmo) = timeout {
-            self.solver.set_option(":timeout", &format!("{}000", tmo))?;
+            self.solver.set_option(":timeout", format!("{}000", tmo))?;
         } else {
             self.solver.set_option(":timeout", "4294967295")?;
         }
