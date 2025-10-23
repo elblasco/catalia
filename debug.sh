@@ -6,7 +6,7 @@ RED='\033[0;31m'
 PUR='\033[0;35m'
 GRE='\033[0;32m'
 NC='\033[0m' # No Color
-FILENAME="even.smt2"
+FILENAME="alt.smt2"
 LOGFILE="log.txt"
 
 function loading_animation() {
@@ -33,4 +33,4 @@ loading_animation $!
 
 echo -e "${GRE}Log produced${NC} in $LOGFILE"
 
-less "$LOGFILE"
+less -N "$LOGFILE"
