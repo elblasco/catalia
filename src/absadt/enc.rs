@@ -247,6 +247,7 @@ impl<A: Approximation> Enc<A> {
                         // Example: (enc-list-int-0 (tail l))
                         let f = enc_for_ty.get_ith_enc_rdf_name(i);
                         let arg = term::unsafe_fun(f, vec![term.clone()], typ::int());
+                        log_debug!("{}-{} the new arg is {arg}", file!(), line!());
                         args.push(arg);
                     }
                 }
@@ -307,11 +308,7 @@ impl<A: Approximation> Enc<A> {
         (0..self.n_params)
             .map(|i| {
                 let name = self.get_ith_enc_rdf_name(i);
-                term::unsafe_fun(
-                    name,
-                    vec![term::var(varidx.clone(), self.typ.clone())],
-                    typ::int(),
-                )
+                term::unsafe_fun(name, vec![term::var(*varidx, self.typ.clone())], typ::int())
             })
             .collect()
     }
@@ -385,8 +382,8 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
             .into_iter()
             .map(|arg| self.encode(arg, encode_var))
             .collect::<Vec<_>>();
-        if argss.len() == 0 {
-            return vec![term::app(op.clone(), Vec::new())];
+        if argss.is_empty() {
+            return vec![term::app(*op, Vec::new())];
         }
         let l = argss[0].len();
         let mut res = Vec::with_capacity(l);
@@ -398,7 +395,7 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
             }
             let o = match op {
                 Op::AdtEql => Op::Eql,
-                o => o.clone(),
+                o => *o,
             };
             res.push(term::app(o, new_args));
         }
@@ -414,13 +411,15 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
         let enc = self.encs.get(typ).unwrap();
         let approx = enc.approxs.get(name).unwrap();
         let args: Vec<_> = argss.iter().flatten().cloned().collect();
+        log_debug!("{}-{} The args are {args:?}", file!(), line!());
         approx.apply(&args)
     }
+
     pub fn encode<EncodeVar>(&self, term: &'a Term, encode_var: &EncodeVar) -> Vec<Term>
     where
         EncodeVar: Fn(&'a Typ, &'a VarIdx) -> Vec<Term>,
     {
-        let ret = match term.get() {
+        match term.get() {
             RTerm::Var(x, y) => {
                 encode_var(x, y)
             }
@@ -463,8 +462,8 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
                 //vec![term::fun(name.clone(), args)]
                 unimplemented!()
             }
-        };
-        log! { @debug | "encoding {} into {:?}", term.get(), ret};
-        ret
+        }
+        //log! { @debug | "encoding {} into {:?}", term.get(), ret};
+        //ret
     }
 }

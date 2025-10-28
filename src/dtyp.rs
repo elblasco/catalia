@@ -99,7 +99,7 @@
 //! [`RDTyp`]: struct.RDTyp.html (RDTyp struct)
 //! [`DTyp`]: type.DTyp.html (DTyp type)
 
-use crate::{common::*, parse::Pos};
+use crate::{common::*, parse::Pos, term::typ::RTyp};
 
 mylib::wrap_usize! {
     #[doc = "Type parameter indices."]
@@ -405,8 +405,8 @@ impl PartialTyp {
         'go_down: loop {
             let mut typ = match curr {
                 PartialTyp::Array(src, tgt) => {
-                    curr = &**src;
-                    stack.push(Frame::ArrayLft(&**tgt));
+                    curr = src;
+                    stack.push(Frame::ArrayLft(tgt));
 
                     continue 'go_down;
                 }
@@ -431,8 +431,12 @@ impl PartialTyp {
                     }
                 }
 
-                PartialTyp::Typ(typ) => typ.clone(),
-
+                PartialTyp::Typ(typ) => {
+                    // match typ {
+                    // 	RTyp::Bool =>
+                    // }
+                    typ.clone()
+                }
                 PartialTyp::Param(idx) => {
                     if let Some(prms) = prms {
                         prms[*idx].clone()
