@@ -125,6 +125,13 @@ impl Approximation for Approx {
                 .map(|x| x.idx)
                 .zip(arg_terms.iter().cloned())
                 .collect();
+            log!(
+                "{}-{} Substituing all the approximation argument with {:#?}, the result is {:#?}",
+                file!(),
+                line!(),
+                subst_map,
+                term.subst_total(&subst_map)
+            );
             res.push(term.subst_total(&subst_map).unwrap().0);
         }
         res
@@ -356,11 +363,22 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
                 Some(enc) => {
                     let approx = enc.approxs.get(name).unwrap();
                     let mut new_args = Vec::new();
+                    log!(
+                        "{}-{} the args are {args:#?} encoded into {:#?}",
+                        file!(),
+                        line!(),
+                        args.iter().map(|a| self.encode_val(a)).collect::<Vec<_>>()
+                    );
                     for arg in args.iter() {
                         for encoded in self.encode_val(arg) {
                             new_args.push(encoded);
                         }
                     }
+                    log!(
+                        "{}-{} at the end the new args are {new_args:#?}",
+                        file!(),
+                        line!(),
+                    );
                     approx.apply(&new_args)
                 }
                 None => unimplemented!("no encoding for {}", name),

@@ -67,45 +67,17 @@ pub struct AbsConf<'original> {
 }
 
 fn initialize_dtyp(typ: Typ, encs: &mut BTreeMap<Typ, Encoder>) -> Res<()> {
-    log_debug!(
-        "{}-{} Initialising dtyp genartion, for now the typ is {typ:#?}",
-        file!(),
-        line!()
-    );
     let (ty, _) = typ.dtyp_inspect().unwrap();
     let mut approxs = BTreeMap::new();
     for (constr_name, sels) in ty.news.iter() {
-        log_debug!(
-            "{}-{} Initailising dtyp encoding for {}",
-            file!(),
-            line!(),
-            constr_name
-        );
         let mut args = VarInfos::new();
 
         for (sel, _) in sels.iter() {
-            log_debug!(
-                "{}-{} Initailising dtyp encoding for {}",
-                file!(),
-                line!(),
-                sel
-            );
             let info = VarInfo::new(sel, typ::int(), args.next_index());
             args.push(info);
         }
-        log_debug!(
-            "{}-{} The arguments are considered of types {:?}",
-            file!(),
-            line!(),
-            args.clone().into_iter().map(|x| x.typ)
-        );
         let terms = vec![term::int_zero()];
         let approx = enc::Approx { args, terms };
-        log_debug!(
-            "{}-{} The fresh approximation for {constr_name}: {typ} is {approx}",
-            file!(),
-            line!(),
-        );
         approxs.insert(constr_name.to_string(), approx);
     }
     let typ = typ.clone();
@@ -117,11 +89,6 @@ fn initialize_dtyp(typ: Typ, encs: &mut BTreeMap<Typ, Encoder>) -> Res<()> {
     };
     log_debug!("{}-{} the new encoding is {enc:#?}", file!(), line!());
     let r = encs.insert(typ, enc);
-    log_debug!(
-        "{}-{} Fpr now the total encoding is {r:#?}",
-        file!(),
-        line!()
-    );
     debug_assert!(r.is_none());
     Ok(())
 }
@@ -169,48 +136,17 @@ impl<'original> AbsConf<'original> {
         let instance = &self.instance;
         for c in instance.clauses.iter() {
             for v in c.vars.iter() {
-                // log_debug!("{}-{} Initialising the encoding for {v}", file!(), line!());
-                // log_debug!(
-                //     "{}-{} Is {} a DTyp? {}",
-                //     file!(),
-                //     line!(),
-                //     v.typ,
-                //     v.typ.is_dtyp()
-                // );
-                // log_debug!(
-                //     "{}-{} Does the current encoding alrteady conatins an encoding for it? {}",
-                //     file!(),
-                //     line!(),
-                //     self.encs.contains_key(&v.typ)
-                // );
                 if v.typ.is_dtyp() && !self.encs.contains_key(&v.typ) {
                     initialize_dtyp(v.typ.clone(), &mut self.encs)?;
                 }
-                // log_debug!(
-                //     "{}-{} After updateing the DTyp, the current encoding is {:?}",
-                //     file!(),
-                //     line!(),
-                //     self.encs
-                // );
             }
             for p in c.lhs_preds.iter() {
                 for t in p.args.iter() {
-                    log_debug!(
-                        "{}-{} Initialising the encoding for {t} in {p}",
-                        file!(),
-                        line!()
-                    );
                     initialize_encs_for_term(t, &mut self.encs)?;
                 }
             }
             initialize_encs_for_term(&c.lhs_term, &mut self.encs)?;
         }
-        log_debug!(
-            "{}-{} The initial encoding is {:?}",
-            file!(),
-            line!(),
-            self.encs
-        );
         Ok(())
     }
 

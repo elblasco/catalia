@@ -16,13 +16,31 @@ pub(super) struct LinearApprox {
 impl Approximation for LinearApprox {
     fn apply(&self, arg_terms: &[Term]) -> Vec<Term> {
         let mut terms = self.approx.apply(arg_terms);
+        log!("{}-{} the `arg_terms` are {arg_terms:#?}", file!(), line!());
+        log!("{}-{} The terms are {terms:#?}", file!(), line!());
         let mut res = vec![term::var(self.cnst, typ::int())];
         let coefs = self.coef.iter().flatten();
         for (arg, coef) in arg_terms.into_iter().zip(coefs) {
             let t = term::mul(vec![term::var(*coef, typ::int()), arg.clone()]);
+            log!(
+                "{}-{} the new multiplication between {arg:#?} and {:#?} is {t:#?}",
+                file!(),
+                line!(),
+                term::var(*coef, typ::int())
+            );
             res.push(t);
         }
         terms.push(term::add(res));
+        log!("{}-{} the term produced is {terms:?}", file!(), line!());
+        if self.coef.len() > arg_terms.len() {
+            log!(
+                "{}-{} therw are more coefs ({}) than args_terms ({})",
+                file!(),
+                line!(),
+                self.coef.len(),
+                arg_terms.len()
+            );
+        }
         terms
     }
 }
@@ -52,24 +70,20 @@ impl LinearApprox {
 
     pub(super) fn instantiate(&self, model: &Model) -> Approx {
         let mut approx = self.approx.clone();
-        log_debug!("{}-{} The old approximation is {approx}", file!(), line!());
         let cnst = &model[self.cnst];
 
-        log_debug!("{}-{} the cnst is {cnst}", file!(), line!());
         let mut terms = vec![term::val(cnst.clone())];
-        let mut constructor_args: Vec<usize> = Vec::with_capacity(approx.args.len());
+        //let mut constructor_args: Vec<usize> = Vec::with_capacity(approx.args.len());
 
         for (coef, arg) in self.coef.iter().flatten().zip(approx.args.iter()) {
             let val = &model[*coef];
             let val = term::val(val.clone());
             let var = term::var(arg.idx, arg.typ.clone());
-            log_debug!("{}-{} val is {val}", file!(), line!());
-            log_debug!("{}-{} var is {var}", file!(), line!());
             terms.push(term::mul(vec![val, var]));
         }
         let term = term::add(terms);
         approx.terms.push(term);
-        log_debug!("{}-{} The new approximation is {approx}", file!(), line!());
+        log!("{}-{} The new approximation is {approx}", file!(), line!());
 
         approx
     }
@@ -96,6 +110,7 @@ impl LinearApprox {
 
 pub(super) struct LinearIteApprox {
     approx: Approx,
+    /// In a linear ITE the coefficent goes 4 by 4, so the first 4 coefficient are for the first element
     coef: VarMap<VarMap<VarIdx>>,
     cnst: VarIdx,
     min: Option<i64>,
@@ -103,16 +118,48 @@ pub(super) struct LinearIteApprox {
 }
 
 impl Approximation for LinearIteApprox {
+    #[track_caller]
     fn apply(&self, arg_terms: &[Term]) -> Vec<Term> {
-        let mut terms = self.approx.apply(arg_terms);
-        let mut res = vec![term::var(self.cnst, typ::int())];
-        let coefs = self.coef.iter().flatten();
-        for (arg, coef) in arg_terms.iter().zip(coefs) {
-            let t = term::mul(vec![term::var(*coef, typ::int()), arg.clone()]);
-            res.push(t);
+        log!(
+            "{}-{} Executing apply beacuse of {}",
+            file!(),
+            line!(),
+            std::panic::Location::caller()
+        );
+        log!("{}-{} the `arg_terms` are {arg_terms:#?}", file!(), line!());
+        let mut term = self.approx.apply(arg_terms);
+        log!("{}-{} The terms are {term:#?}", file!(), line!());
+        log!("{}-{} The coefs {:#?}", file!(), line!(), self.coef);
+        let mut catamorphis: [Term; 4] = [term::int(0), term::int(0), term::int(0), term::int(0)];
+        for (arg_idx, arg) in arg_terms.iter().enumerate() {
+            log!(
+                "{}-{} The coefficients for argument {arg:#?} are {:#?}",
+                file!(),
+                line!(),
+                self.coef.get(arg_idx).unwrap().to_vec()
+            );
+            for (idx, coef) in self.coef.get(arg_idx).unwrap().to_vec().iter().enumerate() {
+                catamorphis[idx] = term::add(vec![
+                    catamorphis[idx].clone(),
+                    term::mul(vec![arg.clone(), term::int_var(*coef)]),
+                ]);
+                log!(
+                    "{}-{} I am about to multiply {arg:#?} and {:#?}, the new catamorphism has shape {:#?}",
+                    file!(),
+                    line!(),
+                    term::int_var(*coef),
+					catamorphis[idx]
+                );
+            }
         }
-        terms.push(term::add(res));
-        terms
+        log!("{}-{} {catamorphis:#?}", file!(), line!());
+        term.push(term::ite(
+            term::gt(catamorphis[0].clone(), catamorphis[1].clone()),
+            catamorphis[2].clone(),
+            catamorphis[3].clone(),
+        ));
+        log!("{}-{} the term produced is {:#?}", file!(), line!(), term);
+        term
     }
 }
 
@@ -140,15 +187,11 @@ impl LinearIteApprox {
     }
 
     pub(super) fn instantiate(&self, model: &Model) -> Approx {
-        for (idx, elem) in self.coef.iter().enumerate() {
-            log_debug!("self.coef[{idx}] = {elem}");
-        }
-
         const N_NEW_TERMS: usize = 4;
         let mut approx = self.approx.clone();
 
         let cnst = &model[self.cnst];
-        log_debug!("{}-{} the cnst is {cnst}", file!(), line!());
+        log!("{}-{} the cnst is {cnst}", file!(), line!());
         let mut terms = Vec::with_capacity(N_NEW_TERMS);
         // We need boolean condition (2 terms)
         // the true branch (1 term)
@@ -156,21 +199,11 @@ impl LinearIteApprox {
         for _ in 0..N_NEW_TERMS {
             let mut args_approx = vec![term::val(cnst.clone())];
             for (coef, arg) in self.coef.iter().flatten().zip(approx.args.iter()) {
-                log_debug!(
-                    "{}-{} the arg is {arg} with coefficient {coef}",
-                    file!(),
-                    line!()
-                );
                 let val = &model[*coef];
-                log_debug!("{}-{} first is {val}", file!(), line!());
                 let val = term::val(val.clone());
                 let var = term::var(arg.idx, arg.typ.clone());
-                log_debug!("{}-{} second val is {val}", file!(), line!());
-                log_debug!("{}-{} var is {var}", file!(), line!());
                 args_approx.push(term::mul(vec![val, var.clone()]));
-                log_debug!("{}-{} args_approx is {args_approx:?}", file!(), line!());
             }
-            debug_assert_eq!(args_approx.len(), approx.args.len() + 1);
             terms.push(term::add(args_approx));
         }
         debug_assert_eq!(terms.len(), 4);
@@ -180,7 +213,7 @@ impl LinearIteApprox {
             terms[2].clone(),
             terms[3].clone(),
         ));
-        log_debug!("{}-{} The new approximation is {approx}", file!(), line!());
+        log!("{}-{} The new approximation is {approx}", file!(), line!());
 
         approx
     }

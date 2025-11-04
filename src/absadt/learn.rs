@@ -3,7 +3,6 @@ use super::enc::*;
 use crate::absadt::approximations::{LinearApprox, LinearIteApprox};
 use crate::common::{smt::FullParser as Parser, Cex as Model, *};
 use crate::info::VarInfo;
-use crate::term::typ::RTyp;
 
 const CONSTRAINT_CHECK_TIMEOUT: usize = 1;
 
@@ -72,10 +71,17 @@ impl TemplateInfo {
                 }
 
                 let mut approx = enc.approxs.get(constr).unwrap().clone();
+                log!("{}-{} The approximation was {approx}", file!(), line!());
                 let n_args: usize = coefs
                     .iter()
                     .map(|x| x.iter().map(|_| 1).sum::<usize>())
                     .sum();
+                log!(
+                    "{}-{} The number of arguments is {n_args} while the current approximation has {} args",
+                    file!(),
+                    line!(),
+					approx.args.len()
+                );
                 // insert dummy variables for newly-introduced approximated integers
                 for _ in 0..(n_args - approx.args.len()) {
                     approx.args.push(VarInfo::new(
@@ -84,9 +90,28 @@ impl TemplateInfo {
                         approx.args.next_index(),
                     ));
                 }
+                log!(
+                    "{}-{} The current appproximation arguments are {:#?}",
+                    file!(),
+                    line!(),
+                    approx.args
+                );
+                log!(
+                    "{}-{} The approximation for {constr} (with {} args) is {}",
+                    file!(),
+                    line!(),
+                    typ.dtyp_inspect()
+                        .unwrap()
+                        .0
+                        .news
+                        .get(constr)
+                        .unwrap()
+                        .len(),
+                    approx,
+                );
                 approxs.insert(
                     constr.to_string(),
-                    Template::Linear(LinearApprox::new(coefs.into(), &mut fvs, approx, min, max)),
+                    Template::Linear(LinearApprox::new(coefs, &mut fvs, approx, min, max)),
                 );
             }
             let enc = Enc {
@@ -115,75 +140,40 @@ impl TemplateInfo {
 
         // prepare LinearIteApprox for each constructor
         for (typ, enc) in encs.iter() {
-            log_debug!("The type is {typ} with encoding {enc}");
             let mut approxs = BTreeMap::new();
             for constr in typ.dtyp_inspect().unwrap().0.news.keys() {
-                log_debug!("The constructor is {constr}");
                 let (ty, prms) = typ.dtyp_inspect().unwrap();
-                log_debug!("Pramater {prms:?}: {ty}");
                 let mut coefs = VarMap::new();
                 // each constructor has a set of selectors
-                log_debug!(
-                    "The list of all selectors is {:?}",
-                    ty.selectors_of(constr).unwrap()
-                );
                 for (sel, ty) in ty.selectors_of(constr).unwrap() {
-                    let local_approx = enc.approxs.get(constr);
-
-                    log_debug!("The current argument is {sel}: {ty}");
                     let ty = ty.to_type(Some(prms)).unwrap();
-                    log_debug!("The type proposed is {ty} with prms {prms:?}");
-                    log_debug!("{encs:?}");
-                    let approx_argument = match local_approx {
-                        None => panic!("There should be an approximation for {constr}"),
-                        Some(approx) => approx
-                            .args
-                            .iter()
-                            .find(|elem| elem.typ == ty && elem.active),
-                    };
-                    //log_debug!("{approx_argument:?}");
-
-                    // if let Some(encoder) = encs.get(&ty) {
-                    // 	printl;m
-                    // }
-
                     let n = match encs.get(&ty) {
                         Some(enc_for_ty) => {
-                            log_debug!(
-                                "{}-{} The encoding for {ty} is {enc_for_ty:?}",
-                                file!(),
-                                line!()
-                            );
                             // prepare template coefficients for all the approximations of the argument
-                            enc_for_ty.n_params + 1
+                            enc_for_ty.n_params + 4
                         }
-                        None => {
-                            log_debug!(
-                                "{}-{} There is no encoding for type {ty} in {encs:?}",
-                                file!(),
-                                line!()
-                            );
-                            assert!(ty.is_int() || ty.is_bool());
-                            1
-                        }
+                        None => 4,
                     };
                     let name = format!("{constr}-{sel}");
                     // prepare coefs for constr-sel, which involes generating new template variables manged
                     // at the top level (`fvs`)
                     let args = prepare_coefs(name, &mut fvs, n);
-                    log_debug!("{}-{} the coefs array is {coefs}", file!(), line!());
-                    log_debug!("{}-{} the ty is {ty}", file!(), line!());
-                    log_debug!("{}-{} the n is {n}", file!(), line!());
-                    log_debug!("{}-{} the args are {args}", file!(), line!());
+                    log!("{}-{} the arg coefficients are {args}", file!(), line!());
                     coefs.push(args);
+                    log!("{}-{} the coefs array is {coefs:#?}", file!(), line!());
                 }
-
                 let mut approx = enc.approxs.get(constr).unwrap().clone();
-                log_debug!("The aproximation is {approx}");
+                log!("{}-{} The approximation was {approx}", file!(), line!());
                 let n_args: usize = coefs
                     .iter()
                     .map(|x| x.iter().map(|_| 1).sum::<usize>())
                     .sum();
+                log!(
+                    "{}-{} The number of arguments is {n_args} while the current approximation has {} args",
+                    file!(),
+                    line!(),
+					approx.args.len()
+                );
                 // insert dummy variables for newly-introduced approximated integers
                 for _ in 0..(n_args - approx.args.len()) {
                     approx.args.push(VarInfo::new(
@@ -192,6 +182,25 @@ impl TemplateInfo {
                         approx.args.next_index(),
                     ));
                 }
+                log!(
+                    "{}-{} The current appproximation arguments are {:#?}",
+                    file!(),
+                    line!(),
+                    approx.args
+                );
+                log!(
+                    "{}-{} The approximation for {constr} (with {} args) is {}",
+                    file!(),
+                    line!(),
+                    typ.dtyp_inspect()
+                        .unwrap()
+                        .0
+                        .news
+                        .get(constr)
+                        .unwrap()
+                        .len(),
+                    approx,
+                );
                 approxs.insert(
                     constr.to_string(),
                     Template::LinearIte(LinearIteApprox::new(coefs, &mut fvs, approx, min, max)),
@@ -277,20 +286,8 @@ impl Approx {
         // 1. original signature
         // 2. append arguments with n_encs
         // 3. append terms with n_encs
-        for (typ, encods) in cur_enc {
-            log_debug!(
-                "{}-{} In Approx::restrict_approx up until now the encoding for {typ} is {encods:?}",
-                file!(),
-                line!()
-            );
-        }
         let mut new_args = VarInfos::new();
         for t in typs {
-            log_debug!(
-                "{}-{} In Approx::restrict_approx analysing type {t}",
-                file!(),
-                line!()
-            );
             match cur_enc.get(&t) {
                 Some(_) => {
                     for _ in 0..n_encs {
@@ -355,25 +352,24 @@ impl Encoder {
 }
 
 impl TemplateScheduler {
-    const N_TEMPLATES: usize = 3; //10;
-
-    const TEMPLATE_SCHDEDULING: [TemplateSchedItem; Self::N_TEMPLATES] = [
-        TemplateSchedItem {
-            n_encs: 1,
-            typ: TemplateType::BoundLinear { min: -1, max: 1 },
-        },
+    const N_TEMPLATES: usize = 1; //10;
+    const TEMPLATE_SCHEDULING: [TemplateSchedItem; Self::N_TEMPLATES] = [
         TemplateSchedItem {
             n_encs: 1,
             typ: TemplateType::LinearIte { min: -1, max: 1 },
         },
         // TemplateSchedItem {
+        //     n_encs: 1,
+        //     typ: TemplateType::BoundLinear { min: -1, max: 1 },
+        // },
+        // TemplateSchedItem {
         //     n_encs: 2,
         //     typ: TemplateType::BoundLinear { min: -1, max: 1 },
         // },
-        TemplateSchedItem {
-            n_encs: 2,
-            typ: TemplateType::LinearIte { min: -1, max: 1 },
-        },
+        // TemplateSchedItem {
+        //     n_encs: 2,
+        //     typ: TemplateType::LinearIte { min: -1, max: 1 },
+        // },
         // TemplateSchedItem {
         //     n_encs: 3,
         //     typ: TemplateType::BoundLinear { min: -1, max: 1 },
@@ -428,19 +424,12 @@ impl TemplateScheduler {
 
 impl std::iter::Iterator for TemplateScheduler {
     type Item = TemplateInfo;
-    #[track_caller]
     fn next(&mut self) -> Option<Self::Item> {
-        log_debug!(
-            "{}-{} The caller was {}",
-            file!(),
-            line!(),
-            core::panic::Location::caller()
-        );
         'a: loop {
             if self.idx >= Self::N_TEMPLATES {
                 return None;
             }
-            let next_template = &Self::TEMPLATE_SCHDEDULING[self.idx];
+            let next_template = &Self::TEMPLATE_SCHEDULING[self.idx];
             self.idx += 1;
 
             for (_, v) in self.enc.iter() {
@@ -449,21 +438,7 @@ impl std::iter::Iterator for TemplateScheduler {
                     continue 'a;
                 }
             }
-
-            log_debug!(
-                "{}-{} in here the encoding is {:?}",
-                file!(),
-                line!(),
-                self.enc
-            );
-
             let enc = self.restrict_approx(next_template.n_encs - 1);
-
-            log_debug!(
-                "{}-{} after the restrict appproximation the encoding is {enc:?}",
-                file!(),
-                line!()
-            );
 
             let r = match next_template.typ {
                 TemplateType::BoundLinear { min, max } => {
@@ -494,7 +469,14 @@ enum Template {
 }
 
 impl Approximation for Template {
+    #[track_caller]
     fn apply(&self, arg_terms: &[Term]) -> Vec<Term> {
+        log!(
+            "{}-{} Executing Approximation::apply beacuse of {}",
+            file!(),
+            line!(),
+            std::panic::Location::caller()
+        );
         match self {
             Template::Linear(approx) => approx.apply(arg_terms),
             Template::LinearIte(approx) => approx.apply(arg_terms),
@@ -675,7 +657,6 @@ impl<'a> LearnCtx<'a> {
         let model = self.solver.get_model()?;
         let model = Parser.fix_model(model)?;
         let cex = Model::of_model(&template_info.parameters, model, true)?;
-        log_debug!("{}-{} the counter-example is {cex}", file!(), line!());
         Ok(Some(cex))
     }
 
@@ -700,13 +681,11 @@ impl<'a> LearnCtx<'a> {
         let mut form = Vec::new();
         let encoder = EncodeCtx::new(&template_info.encs);
         for m in self.models.iter() {
-            log_debug!("{}-{} `m` is {m:?}", file!(), line!());
             let mut terms =
                 encoder.encode(&term::not(self.cex.term.clone()), &|_: &Typ, v: &VarIdx| {
                     let v = &m[*v];
                     encoder.encode_val(v)
                 });
-            log_debug!("{}-{} Terms is {terms:?}", file!(), line!());
             form.append(&mut terms)
         }
         // solve the form
@@ -716,11 +695,7 @@ impl<'a> LearnCtx<'a> {
 
         let r = match self.get_template_model(&form, &template_info) {
             Err(e) => panic!("{e}"),
-            Ok(ok) => ok.map(|m| {
-                let encs = template_info.instantiate(&m);
-                log_debug!("{}-{} The new encoding is {encs:?}", file!(), line!());
-                encs
-            }),
+            Ok(ok) => ok.map(|m| template_info.instantiate(&m)),
         };
 
         // let r = self
@@ -742,19 +717,9 @@ impl<'a> LearnCtx<'a> {
         for template_info in TemplateScheduler::new(original_encs.clone()) {
             match self.get_instantiation(template_info)? {
                 None => {
-                    log_debug!(
-                        "{}-{} did not manage to instantiate a new encoding",
-                        file!(),
-                        line!()
-                    );
                     continue;
                 }
                 Some(new_encs) => {
-                    log_debug!(
-                        "{}-{} managed to instantiate a new encoding, which is {new_encs:?}",
-                        file!(),
-                        line!()
-                    );
                     return Ok(Some(new_encs));
                 }
             }
@@ -766,11 +731,6 @@ impl<'a> LearnCtx<'a> {
         // We now only consider the linear models
         // Appendinx them to the existing encodings
         let original_enc = self.original_encs.clone();
-        log_debug!(
-            "{}-{} The encoding before checking the counter-example is {original_enc:?}",
-            file!(),
-            line!()
-        );
         let mut first = true;
         loop {
             // 1. Check if the new encoding can refute the counterexample
@@ -797,8 +757,7 @@ impl<'a> LearnCtx<'a> {
 
                     #[cfg(debug_assertions)]
                     {
-                        for (idx, m) in self.models.iter().enumerate() {
-                            log_debug!("A part of the model is {m}");
+                        for m in self.models.iter() {
                             assert_ne!(m, &model, "model is duplicated");
                         }
                     }
