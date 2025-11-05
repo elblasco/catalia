@@ -117,6 +117,7 @@ pub trait Approximation {
 
 impl Approximation for Approx {
     fn apply(&self, arg_terms: &[Term]) -> Vec<Term> {
+        log!("{}-{} the arguments are {arg_terms:#?}", file!(), line!());
         let mut res = Vec::with_capacity(self.terms.len());
         for term in self.terms.iter() {
             let subst_map: VarHMap<_> = self

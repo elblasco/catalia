@@ -138,18 +138,18 @@ impl TemplateInfo {
 
         let mut new_encs = BTreeMap::new();
 
-        // prepare LinearIteApprox for each constructor
         for (typ, enc) in encs.iter() {
             let mut approxs = BTreeMap::new();
+            // Iterate through each ADT constructor
             for constr in typ.dtyp_inspect().unwrap().0.news.keys() {
                 let (ty, prms) = typ.dtyp_inspect().unwrap();
                 let mut coefs = VarMap::new();
-                // each constructor has a set of selectors
+                // each constructor has a set of selectors aka arguments
                 for (sel, ty) in ty.selectors_of(constr).unwrap() {
                     let ty = ty.to_type(Some(prms)).unwrap();
-                    let n = match encs.get(&ty) {
+                    let n_coefficients = match encs.get(&ty) {
                         Some(enc_for_ty) => {
-                            // prepare template coefficients for all the approximations of the argument
+                            // prepare template coefficients for the current argument
                             enc_for_ty.n_params + 4
                         }
                         None => 4,
@@ -157,10 +157,10 @@ impl TemplateInfo {
                     let name = format!("{constr}-{sel}");
                     // prepare coefs for constr-sel, which involes generating new template variables manged
                     // at the top level (`fvs`)
-                    let args = prepare_coefs(name, &mut fvs, n);
+                    let args = prepare_coefs(name, &mut fvs, n_coefficients);
                     log!("{}-{} the arg coefficients are {args}", file!(), line!());
                     coefs.push(args);
-                    log!("{}-{} the coefs array is {coefs:#?}", file!(), line!());
+                    log!("{}-{} the coefs array is {coefs}", file!(), line!());
                 }
                 let mut approx = enc.approxs.get(constr).unwrap().clone();
                 log!("{}-{} The approximation was {approx}", file!(), line!());
@@ -354,14 +354,14 @@ impl Encoder {
 impl TemplateScheduler {
     const N_TEMPLATES: usize = 1; //10;
     const TEMPLATE_SCHEDULING: [TemplateSchedItem; Self::N_TEMPLATES] = [
-        TemplateSchedItem {
-            n_encs: 1,
-            typ: TemplateType::LinearIte { min: -1, max: 1 },
-        },
         // TemplateSchedItem {
         //     n_encs: 1,
-        //     typ: TemplateType::BoundLinear { min: -1, max: 1 },
+        //     typ: TemplateType::LinearIte { min: -1, max: 1 },
         // },
+        TemplateSchedItem {
+            n_encs: 1,
+            typ: TemplateType::BoundLinear { min: -1, max: 1 },
+        },
         // TemplateSchedItem {
         //     n_encs: 2,
         //     typ: TemplateType::BoundLinear { min: -1, max: 1 },
@@ -536,7 +536,7 @@ fn test_linear_approx_apply() {
     println!("t2: {}", t2);
     for (a, b) in [(4i64, 3i64), (1, 2), (-4, 0)].into_iter() {
         let subst: VarHMap<_> = (0..2)
-            .map(|x| VarIdx::from(x))
+            .map(VarIdx::from)
             .zip(vec![term::val(val::int(a)), term::val(val::int(b))].into_iter())
             .collect();
         assert_eq!(

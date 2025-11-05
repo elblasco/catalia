@@ -1615,6 +1615,12 @@ impl RTerm {
     ) -> Option<(Term, bool)> {
         use self::zip::*;
         let mut changed = false;
+        log!(
+            "{}-{} Trying to do a {} substitution over {self}",
+            file!(),
+            line!(),
+            if total { "total" } else { "partial" }
+        );
 
         let res = zip(
             &self.to_hcons(),
@@ -1622,6 +1628,16 @@ impl RTerm {
             |zip_null| match zip_null {
                 ZipNullary::Cst(val) => Ok(cst(val.clone())),
                 ZipNullary::Var(typ, var) => {
+                    log!(
+                        "{}-{} The map {} contain a mapping for {var}",
+                        file!(),
+                        line!(),
+                        if map.var_get(var).is_some() {
+                            "does"
+                        } else {
+                            "does not"
+                        }
+                    );
                     if let Some(term) = map.var_get(var) {
                         debug_assert_eq! { typ, & term.typ() }
                         changed = true;
@@ -1700,10 +1716,15 @@ impl RTerm {
                 Ok(ZipDo::Trm { nu_term, frame })
             },
         );
-
         if let Ok(term) = res {
             Some((term, changed))
         } else {
+            log!(
+                "{}-{} the result is an error of the form {:?}",
+                file!(),
+                line!(),
+                res
+            );
             None
         }
     }
