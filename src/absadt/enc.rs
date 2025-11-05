@@ -125,14 +125,23 @@ impl Approximation for Approx {
                 .map(|x| x.idx)
                 .zip(arg_terms.iter().cloned())
                 .collect();
+            for (idx, val) in subst_map.iter() {
+                log!(
+                    "{}-{} there is a mapping {} |-> {}",
+                    file!(),
+                    line!(),
+                    idx,
+                    val
+                );
+            }
+            let substitution_res = term.subst_total(&subst_map);
             log!(
-                "{}-{} Substituing all the approximation argument with {:#?}, the result is {:#?}",
+                "{}-{} Substituing all the approximation argument, the result is {:#?}",
                 file!(),
                 line!(),
-                subst_map,
-                term.subst_total(&subst_map)
+                substitution_res
             );
-            res.push(term.subst_total(&subst_map).unwrap().0);
+            res.push(substitution_res.unwrap().0);
         }
         res
     }

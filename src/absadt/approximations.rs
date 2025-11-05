@@ -20,10 +20,10 @@ impl Approximation for LinearApprox {
         log!("{}-{} The terms are {terms:#?}", file!(), line!());
         let mut res = vec![term::var(self.cnst, typ::int())];
         let coefs = self.coef.iter().flatten();
-        for (arg, coef) in arg_terms.into_iter().zip(coefs) {
+        for (arg, coef) in arg_terms.iter().zip(coefs) {
             let t = term::mul(vec![term::var(*coef, typ::int()), arg.clone()]);
             log!(
-                "{}-{} the new multiplication between {arg:#?} and {:#?} is {t:#?}",
+                "{}-{} the new multiplication between {arg} and {} is {t}",
                 file!(),
                 line!(),
                 term::var(*coef, typ::int())
@@ -31,16 +31,7 @@ impl Approximation for LinearApprox {
             res.push(t);
         }
         terms.push(term::add(res));
-        log!("{}-{} the term produced is {terms:?}", file!(), line!());
-        if self.coef.len() > arg_terms.len() {
-            log!(
-                "{}-{} therw are more coefs ({}) than args_terms ({})",
-                file!(),
-                line!(),
-                self.coef.len(),
-                arg_terms.len()
-            );
-        }
+        log!("{}-{} the term produced is {:?}", file!(), line!(), terms);
         terms
     }
 }
@@ -120,6 +111,7 @@ pub(super) struct LinearIteApprox {
 impl Approximation for LinearIteApprox {
     #[track_caller]
     fn apply(&self, arg_terms: &[Term]) -> Vec<Term> {
+        const N_LINEAR_EXPRESSIONS: usize = 4;
         log!(
             "{}-{} Executing apply beacuse of {}",
             file!(),

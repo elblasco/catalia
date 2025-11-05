@@ -87,7 +87,6 @@ fn initialize_dtyp(typ: Typ, encs: &mut BTreeMap<Typ, Encoder>) -> Res<()> {
         n_params,
         approxs,
     };
-    log_debug!("{}-{} the new encoding is {enc:#?}", file!(), line!());
     let r = encs.insert(typ, enc);
     debug_assert!(r.is_none());
     Ok(())
@@ -223,9 +222,7 @@ impl<'original> AbsConf<'original> {
     ///
     /// returns true if the instance is unsatisfiable
     fn synthesize_initial_encs(&mut self) -> Res<bool> {
-        log_debug!("{}-{} I am here", file!(), line!());
         for n in (0..INIT_EXPANSION_DEPTH).rev() {
-            log_info!("initializing encs: {}", n);
             let cex = self.instance.get_n_expansion(n);
             if let Ok(x) = self.handle_cex(cex, true) {
                 return Ok(x);
