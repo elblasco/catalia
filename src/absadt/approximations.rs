@@ -121,36 +121,34 @@ impl Approximation for LinearIteApprox {
         log!("{}-{} the `arg_terms` are {arg_terms:#?}", file!(), line!());
         let mut term = self.approx.apply(arg_terms);
         log!("{}-{} The terms are {term:#?}", file!(), line!());
-        log!("{}-{} The coefs {:#?}", file!(), line!(), self.coef);
-        let mut catamorphis: [Term; 4] = [term::int(0), term::int(0), term::int(0), term::int(0)];
+        let mut catamorphis: [Term; N_LINEAR_EXPRESSIONS] = [
+            term::var(self.cnst, typ::int()),
+            term::var(self.cnst, typ::int()),
+            term::var(self.cnst, typ::int()),
+            term::var(self.cnst, typ::int()),
+        ];
         for (arg_idx, arg) in arg_terms.iter().enumerate() {
-            log!(
-                "{}-{} The coefficients for argument {arg:#?} are {:#?}",
-                file!(),
-                line!(),
-                self.coef.get(arg_idx).unwrap().to_vec()
-            );
             for (idx, coef) in self.coef.get(arg_idx).unwrap().to_vec().iter().enumerate() {
+                log!(
+                    "{}-{} {} += ({} * {})",
+                    file!(),
+                    line!(),
+                    catamorphis[idx],
+                    arg.clone(),
+                    term::int_var(*coef)
+                );
                 catamorphis[idx] = term::add(vec![
                     catamorphis[idx].clone(),
                     term::mul(vec![arg.clone(), term::int_var(*coef)]),
                 ]);
-                log!(
-                    "{}-{} I am about to multiply {arg:#?} and {:#?}, the new catamorphism has shape {:#?}",
-                    file!(),
-                    line!(),
-                    term::int_var(*coef),
-					catamorphis[idx]
-                );
             }
         }
-        log!("{}-{} {catamorphis:#?}", file!(), line!());
         term.push(term::ite(
             term::gt(catamorphis[0].clone(), catamorphis[1].clone()),
             catamorphis[2].clone(),
             catamorphis[3].clone(),
         ));
-        log!("{}-{} the term produced is {:#?}", file!(), line!(), term);
+        log!("{}-{} the term produced is {:?}", file!(), line!(), term);
         term
     }
 }
@@ -178,12 +176,19 @@ impl LinearIteApprox {
         Some(term::and(asserts))
     }
 
+    #[track_caller]
     pub(super) fn instantiate(&self, model: &Model) -> Approx {
+        log!(
+            "{}-{} the function instantiate has been called by {}",
+            file!(),
+            line!(),
+            std::panic::Location::caller()
+        );
         const N_NEW_TERMS: usize = 4;
         let mut approx = self.approx.clone();
 
         let cnst = &model[self.cnst];
-        log!("{}-{} the cnst is {cnst}", file!(), line!());
+        log!("{}-{} the cnst is {cnst:#?}", file!(), line!());
         let mut terms = Vec::with_capacity(N_NEW_TERMS);
         // We need boolean condition (2 terms)
         // the true branch (1 term)
@@ -194,7 +199,8 @@ impl LinearIteApprox {
                 let val = &model[*coef];
                 let val = term::val(val.clone());
                 let var = term::var(arg.idx, arg.typ.clone());
-                args_approx.push(term::mul(vec![val, var.clone()]));
+                log!("Multipling {val} with {var}");
+                args_approx.push(term::mul(vec![val, var]));
             }
             terms.push(term::add(args_approx));
         }
