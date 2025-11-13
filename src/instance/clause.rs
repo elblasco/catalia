@@ -67,6 +67,18 @@ pub struct Clause {
     from: ClsIdx,
 }
 
+impl std::fmt::Display for Clause {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for arg in self.vars.iter() {
+            write!(f, "{:?}", arg)?;
+        }
+        for lhs_term in self.lhs_terms.iter() {
+            write!(f, "{:?}", lhs_term)?;
+        }
+        writeln!(f, "=> {:?}", self.rhs)
+    }
+}
+
 /// Functions mutating the clauses.
 impl Clause {
     /// Sets the internal flag `terms_changed` to false.
