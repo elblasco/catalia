@@ -1,6 +1,6 @@
+use super::approximations::*;
 use super::chc::CEX;
 use super::enc::*;
-use crate::absadt::approximations::{LinearApprox, LinearIteApprox};
 use crate::common::{smt::FullParser as Parser, Cex as Model, *};
 use crate::info::VarInfo;
 
@@ -71,17 +71,10 @@ impl TemplateInfo {
                 }
 
                 let mut approx = enc.approxs.get(constr).unwrap().clone();
-                log!("{}-{} The approximation was {approx}", file!(), line!());
                 let n_args: usize = coefs
                     .iter()
                     .map(|x| x.iter().map(|_| 1).sum::<usize>())
                     .sum();
-                log!(
-                    "{}-{} The number of arguments is {n_args} while the current approximation has {} args",
-                    file!(),
-                    line!(),
-					approx.args.len()
-                );
                 // insert dummy variables for newly-introduced approximated integers
                 for _ in 0..(n_args - approx.args.len()) {
                     approx.args.push(VarInfo::new(
@@ -90,25 +83,6 @@ impl TemplateInfo {
                         approx.args.next_index(),
                     ));
                 }
-                log!(
-                    "{}-{} The current appproximation arguments are {:#?}",
-                    file!(),
-                    line!(),
-                    approx.args
-                );
-                log!(
-                    "{}-{} The approximation for {constr} (with {} args) is {}",
-                    file!(),
-                    line!(),
-                    typ.dtyp_inspect()
-                        .unwrap()
-                        .0
-                        .news
-                        .get(constr)
-                        .unwrap()
-                        .len(),
-                    approx,
-                );
                 approxs.insert(
                     constr.to_string(),
                     Template::Linear(LinearApprox::new(coefs, &mut fvs, approx, min, max)),
@@ -128,8 +102,160 @@ impl TemplateInfo {
         }
     }
 
+    fn new_approx(encs: BTreeMap<Typ, Encoder>, template: TemplateType) -> TemplateInfo {
+        let mut fvs = VarInfos::new();
+
+        let mut new_encs = BTreeMap::new();
+
+        let (chunk_size, coef_per_sel) = match template {
+            TemplateType::BoundLinear { .. } => (1, 1),
+            TemplateType::BoundBSTIte { .. } => (2, BTreeSortApprox::ITE_PARTS),
+            TemplateType::BoundSortListIte { .. } => (2, ListSortApprox::ITE_PARTS),
+            TemplateType::BoundMaxIte { .. } => (4, MaxApprox::ITE_PARTS),
+            TemplateType::Linear => todo!(),
+        };
+
+        for (typ, enc) in encs.iter() {
+            let mut approxs = BTreeMap::new();
+            // Iterate through each ADT constructor
+            for constr in typ.dtyp_inspect().unwrap().0.news.keys() {
+                let (ty, prms) = typ.dtyp_inspect().unwrap();
+                let mut coefs = VarMap::new();
+                // each constructor has a set of selectors aka arguments
+                for (sel, ty) in ty.selectors_of(constr).unwrap() {
+                    let ty = ty.to_type(Some(prms)).unwrap();
+                    let n_coefficients = match encs.get(&ty) {
+                        Some(enc_for_ty) => {
+                            // prepare template coefficients for the current argument
+                            enc_for_ty.n_params + coef_per_sel
+                        }
+                        None => coef_per_sel,
+                    };
+                    let name = format!("{constr}-{sel}");
+                    // prepare coefs for constr-sel, which involes generating new template variables manged
+                    // at the top level (`fvs`)
+                    let named_coefs = prepare_coefs(name, &mut fvs, n_coefficients);
+                    coefs.push(named_coefs);
+                }
+                let mut approx = enc.approxs.get(constr).unwrap().clone();
+
+                let n_args: usize = coefs
+                    .chunks(chunk_size)
+                    .map(|x| x.iter().map(|_| 1).sum::<usize>())
+                    .sum();
+                // insert dummy variables for newly-introduced approximated integers
+                for _ in 0..(n_args - approx.args.len()) {
+                    approx.args.push(VarInfo::new(
+                        format!("tmp-{}", approx.args.next_index()),
+                        typ::int(),
+                        approx.args.next_index(),
+                    ));
+                }
+                let new_template =
+                    match template {
+                        TemplateType::BoundBSTIte { min, max } => Template::BTreeSortIte(
+                            BTreeSortApprox::new(coefs, &mut fvs, approx, Some(min), Some(max)),
+                        ),
+                        TemplateType::BoundLinear { min, max } => Template::Linear(
+                            LinearApprox::new(coefs, &mut fvs, approx, Some(min), Some(max)),
+                        ),
+                        TemplateType::BoundSortListIte { min, max } => Template::ListSortIte(
+                            ListSortApprox::new(coefs, &mut fvs, approx, Some(min), Some(max)),
+                        ),
+                        TemplateType::BoundMaxIte { min, max } => Template::MaxIte(MaxApprox::new(
+                            coefs,
+                            &mut fvs,
+                            approx,
+                            Some(min),
+                            Some(max),
+                        )),
+                        TemplateType::Linear => todo!(),
+                    };
+                approxs.insert(
+                    constr.to_string(),
+                    new_template, //Template::ListSortIte(ListSortApprox::new(coefs, &mut fvs, approx, min, max)),
+                );
+            }
+            let enc = Enc {
+                approxs,
+                typ: typ.clone(),
+                n_params: enc.n_params + 1,
+            };
+            new_encs.insert(typ.clone(), enc);
+        }
+
+        TemplateInfo {
+            parameters: fvs,
+            encs: new_encs,
+        }
+    }
+
+    fn new_tree_approx(
+        encs: BTreeMap<Typ, Encoder>,
+        min: Option<i64>,
+        max: Option<i64>,
+    ) -> TemplateInfo {
+        let mut fvs = VarInfos::new();
+
+        let mut new_encs = BTreeMap::new();
+
+        for (typ, enc) in encs.iter() {
+            let mut approxs = BTreeMap::new();
+            // Iterate through each ADT constructor
+            for constr in typ.dtyp_inspect().unwrap().0.news.keys() {
+                let (ty, prms) = typ.dtyp_inspect().unwrap();
+                let mut coefs = VarMap::new();
+                // each constructor has a set of selectors aka arguments
+                for (sel, ty) in ty.selectors_of(constr).unwrap() {
+                    let ty = ty.to_type(Some(prms)).unwrap();
+                    let n_coefficients = match encs.get(&ty) {
+                        Some(enc_for_ty) => {
+                            // prepare template coefficients for the current argument
+                            enc_for_ty.n_params + BTreeSortApprox::ITE_PARTS
+                        }
+                        None => BTreeSortApprox::ITE_PARTS,
+                    };
+                    let name = format!("{constr}-{sel}");
+                    // prepare coefs for constr-sel, which involes generating new template variables manged
+                    // at the top level (`fvs`)
+                    let named_coefs = prepare_coefs(name, &mut fvs, n_coefficients);
+                    coefs.push(named_coefs);
+                }
+                let mut approx = enc.approxs.get(constr).unwrap().clone();
+
+                let n_args: usize = coefs
+                    .chunks(BTreeSortApprox::ITE_PARTS)
+                    .map(|x| x.iter().map(|_| 1).sum::<usize>())
+                    .sum();
+                // insert dummy variables for newly-introduced approximated integers
+                for _ in 0..(n_args - approx.args.len()) {
+                    approx.args.push(VarInfo::new(
+                        format!("tmp-{}", approx.args.next_index()),
+                        typ::int(),
+                        approx.args.next_index(),
+                    ));
+                }
+                approxs.insert(
+                    constr.to_string(),
+                    Template::BTreeSortIte(BTreeSortApprox::new(coefs, &mut fvs, approx, min, max)),
+                );
+            }
+            let enc = Enc {
+                approxs,
+                typ: typ.clone(),
+                n_params: enc.n_params + 1,
+            };
+            new_encs.insert(typ.clone(), enc);
+        }
+
+        TemplateInfo {
+            parameters: fvs,
+            encs: new_encs,
+        }
+    }
+
     /// Instantiate a new Linear Ite approximation, not refinement
-    fn new_linear_ite_approx(
+    fn new_max_approx(
         encs: BTreeMap<Typ, Encoder>,
         min: Option<i64>,
         max: Option<i64>,
@@ -157,23 +283,15 @@ impl TemplateInfo {
                     let name = format!("{constr}-{sel}");
                     // prepare coefs for constr-sel, which involes generating new template variables manged
                     // at the top level (`fvs`)
-                    let args = prepare_coefs(name, &mut fvs, n_coefficients);
-                    log!("{}-{} the arg coefficients are {args}", file!(), line!());
-                    coefs.push(args);
-                    log!("{}-{} the coefs array is {coefs}", file!(), line!());
+                    let named_coefs = prepare_coefs(name, &mut fvs, n_coefficients);
+                    coefs.push(named_coefs);
                 }
                 let mut approx = enc.approxs.get(constr).unwrap().clone();
-                log!("{}-{} The approximation was {approx}", file!(), line!());
+
                 let n_args: usize = coefs
-                    .iter()
+                    .chunks(MaxApprox::ITE_PARTS)
                     .map(|x| x.iter().map(|_| 1).sum::<usize>())
                     .sum();
-                log!(
-                    "{}-{} The number of arguments is {n_args} while the current approximation has {} args",
-                    file!(),
-                    line!(),
-					approx.args.len()
-                );
                 // insert dummy variables for newly-introduced approximated integers
                 for _ in 0..(n_args - approx.args.len()) {
                     approx.args.push(VarInfo::new(
@@ -182,28 +300,9 @@ impl TemplateInfo {
                         approx.args.next_index(),
                     ));
                 }
-                log!(
-                    "{}-{} The current appproximation arguments are {:#?}",
-                    file!(),
-                    line!(),
-                    approx.args
-                );
-                log!(
-                    "{}-{} The approximation for {constr} (with {} args) is {}",
-                    file!(),
-                    line!(),
-                    typ.dtyp_inspect()
-                        .unwrap()
-                        .0
-                        .news
-                        .get(constr)
-                        .unwrap()
-                        .len(),
-                    approx,
-                );
                 approxs.insert(
                     constr.to_string(),
-                    Template::LinearIte(LinearIteApprox::new(coefs, &mut fvs, approx, min, max)),
+                    Template::MaxIte(MaxApprox::new(coefs, &mut fvs, approx, min, max)),
                 );
             }
             let enc = Enc {
@@ -249,10 +348,13 @@ struct TemplateScheduler {
     enc: BTreeMap<Typ, Encoder>,
 }
 
+#[derive(Clone, Copy)]
 enum TemplateType {
     BoundLinear { min: i64, max: i64 },
     Linear,
-    LinearIte { min: i64, max: i64 },
+    BoundMaxIte { min: i64, max: i64 },
+    BoundSortListIte { min: i64, max: i64 },
+    BoundBSTIte { min: i64, max: i64 },
 }
 
 impl std::fmt::Display for TemplateType {
@@ -260,7 +362,11 @@ impl std::fmt::Display for TemplateType {
         match self {
             TemplateType::BoundLinear { min, max } => write!(f, "BoundLinear({}, {})", min, max),
             TemplateType::Linear => write!(f, "Linear"),
-            TemplateType::LinearIte { min, max } => write!(f, "LinearIte({}, {})", min, max),
+            TemplateType::BoundMaxIte { min, max } => write!(f, "BoundMaxIte({}, {})", min, max),
+            TemplateType::BoundSortListIte { min, max } => {
+                write!(f, "BoundSortListIte({}, {})", min, max)
+            }
+            TemplateType::BoundBSTIte { min, max } => write!(f, "BoundBSTIte({}, {})", min, max),
         }
     }
 }
@@ -323,18 +429,8 @@ impl Encoder {
         n_encs: usize,
     ) -> Encoder {
         let (ty, params) = typ.dtyp_inspect().unwrap();
-        log_debug!(
-            "{}-{} I am trying to approximate {ty} with paramters {params:?}",
-            file!(),
-            line!()
-        );
         let mut new_approxs = BTreeMap::new();
         for (cnstr, args) in ty.news.iter() {
-            log_debug!(
-                "{}-{} in Encoder::restrict_approx analysing ({cnstr},{args:?})",
-                file!(),
-                line!()
-            );
             let approx = self.approxs.get(cnstr).unwrap();
             let approx = approx.restrict_approx(
                 cur_enc,
@@ -352,31 +448,27 @@ impl Encoder {
 }
 
 impl TemplateScheduler {
-    const N_TEMPLATES: usize = 1; //10;
+    const N_TEMPLATES: usize = 3;
     const TEMPLATE_SCHEDULING: [TemplateSchedItem; Self::N_TEMPLATES] = [
-        // TemplateSchedItem {
-        //     n_encs: 1,
-        //     typ: TemplateType::LinearIte { min: -1, max: 1 },
-        // },
         TemplateSchedItem {
             n_encs: 1,
-            typ: TemplateType::BoundLinear { min: -1, max: 1 },
+            typ: TemplateType::BoundSortListIte { min: -1, max: 1 },
+        },
+        TemplateSchedItem {
+            n_encs: 1,
+            typ: TemplateType::BoundBSTIte { min: -1, max: 1 },
+        },
+        TemplateSchedItem {
+            n_encs: 1,
+            typ: TemplateType::BoundMaxIte { min: -1, max: 1 },
         },
         // TemplateSchedItem {
         //     n_encs: 2,
         //     typ: TemplateType::BoundLinear { min: -1, max: 1 },
         // },
         // TemplateSchedItem {
-        //     n_encs: 2,
-        //     typ: TemplateType::LinearIte { min: -1, max: 1 },
-        // },
-        // TemplateSchedItem {
         //     n_encs: 3,
         //     typ: TemplateType::BoundLinear { min: -1, max: 1 },
-        // },
-        // TemplateSchedItem {
-        //     n_encs: 3,
-        //     typ: TemplateType::LinearIte { min: -1, max: 1 },
         // },
         // TemplateSchedItem {
         //     n_encs: 3,
@@ -405,20 +497,19 @@ impl TemplateScheduler {
     }
 
     fn restrict_approx(&self, n_encs: usize) -> BTreeMap<Typ, Encoder> {
-        let ret = self
-            .enc
+        self.enc
             .iter()
             .map(|(k, enc)| {
                 let enc = enc.restrict_approx(&self.enc, k, n_encs);
                 (k.clone(), enc)
             })
-            .collect();
-        log_debug!(
-            "{}-{} The restricted encoding with {n_encs} encodings gave {ret:#?}",
-            file!(),
-            line!()
-        );
-        ret
+            .collect()
+        // log_debug!(
+        //     "{}-{} The restricted encoding with {n_encs} encodings gave {ret:#?}",
+        //     file!(),
+        //     line!()
+        // );
+        // ret
     }
 }
 
@@ -440,15 +531,21 @@ impl std::iter::Iterator for TemplateScheduler {
             }
             let enc = self.restrict_approx(next_template.n_encs - 1);
 
-            let r = match next_template.typ {
-                TemplateType::BoundLinear { min, max } => {
-                    TemplateInfo::new_linear_approx(enc, Some(min), Some(max))
-                }
-                TemplateType::Linear => TemplateInfo::new_linear_approx(enc, None, None),
-                TemplateType::LinearIte { min, max } => {
-                    TemplateInfo::new_linear_ite_approx(enc, Some(min), Some(max))
-                }
-            };
+            let r = TemplateInfo::new_approx(enc, next_template.typ); //  match next_template.typ {
+                                                                      //     TemplateType::BoundLinear { min, max } => {
+                                                                      //         TemplateInfo::new_approx(enc, next_template.typ)
+                                                                      //     }
+                                                                      //     TemplateType::Linear => TemplateInfo::new_linear_approx(enc, None, None),
+                                                                      //     TemplateType::BoundMaxIte { min, max } => {
+                                                                      //         TemplateInfo::new_max_approx(enc, Some(min), Some(max))
+                                                                      //     }
+                                                                      //     TemplateType::BoundSortListIte { min, max } => {
+                                                                      //         TemplateInfo::new_list_approx(enc, Some(min), Some(max), next_template.typ)
+                                                                      //     }
+                                                                      //     TemplateType::BoundBSTIte { min, max } => {
+                                                                      //         TemplateInfo::new_tree_approx(enc, Some(min), Some(max))
+                                                                      //     }
+                                                                      // };
             log_info!("Template: {}", next_template);
             break Some(r);
         }
@@ -465,21 +562,18 @@ pub struct LearnCtx<'a> {
 
 enum Template {
     Linear(LinearApprox),
-    LinearIte(LinearIteApprox),
+    MaxIte(MaxApprox),
+    ListSortIte(ListSortApprox),
+    BTreeSortIte(BTreeSortApprox),
 }
 
 impl Approximation for Template {
-    #[track_caller]
     fn apply(&self, arg_terms: &[Term]) -> Vec<Term> {
-        log!(
-            "{}-{} Executing Approximation::apply beacuse of {}",
-            file!(),
-            line!(),
-            std::panic::Location::caller()
-        );
         match self {
             Template::Linear(approx) => approx.apply(arg_terms),
-            Template::LinearIte(approx) => approx.apply(arg_terms),
+            Template::MaxIte(approx) => approx.apply(arg_terms),
+            Template::ListSortIte(approx) => approx.apply(arg_terms),
+            Template::BTreeSortIte(approx) => approx.apply(arg_terms),
         }
     }
 }
@@ -488,13 +582,17 @@ impl Template {
     fn instantiate(&self, model: &Model) -> Approx {
         match self {
             Template::Linear(approx) => approx.instantiate(model),
-            Template::LinearIte(approx) => approx.instantiate(model),
+            Template::MaxIte(approx) => approx.instantiate(model),
+            Template::ListSortIte(approx) => approx.instantiate(model),
+            Template::BTreeSortIte(approx) => approx.instantiate(model),
         }
     }
     fn constraint(&self) -> Option<Term> {
         match self {
             Template::Linear(approx) => approx.constraint(),
-            Template::LinearIte(approx) => approx.constraint(),
+            Template::MaxIte(approx) => approx.constraint(),
+            Template::ListSortIte(approx) => approx.constraint(),
+            Template::BTreeSortIte(approx) => approx.constraint(),
         }
     }
 }
@@ -607,31 +705,54 @@ impl<'a> LearnCtx<'a> {
 
     fn get_model(&mut self, timeout: Option<usize>) -> Res<Option<Model>> {
         self.solver.reset()?;
+
         self.define_datatypes()?;
         self.define_enc_funs()?;
         self.cex
             .define_assert_with_enc(self.solver, self.original_encs)?;
         if let Some(tmo) = timeout {
+            log!(
+                "{}-{} timeout = {}",
+                file!(),
+                line!(),
+                format!("{}000", tmo)
+            );
             self.solver.set_option(":timeout", format!("{}000", tmo))?;
         } else {
+            log!("{}-{} timeout = 4294967295", file!(), line!());
             self.solver.set_option(":timeout", "4294967295")?;
         }
+        log!(
+            "{}-{} I am about to check SAT with the following file",
+            file!(),
+            line!()
+        );
+        for (key, val) in self.original_encs.iter() {
+            log!(
+                "{}-{} The encoding for {} is {}",
+                file!(),
+                line!(),
+                if let Some((dtyp, _)) = key.dtyp_inspect() {
+                    &(dtyp.name)
+                } else {
+                    "not a dtype"
+                },
+                val.approxs.get("cons").unwrap()
+            )
+        }
+
         let b = self.solver.check_sat()?;
+        log!(
+            "{}-{} finished checking SAT the result is {b:?}",
+            file!(),
+            line!()
+        );
         if !b {
             return Ok(None);
         }
+
         let model = self.solver.get_model()?;
         let model = Parser.fix_model(model)?;
-        for elem in &model {
-            log_debug!(
-                "{}-{} variable {}, hashconsed type {} and hashconsed val {}",
-                file!(),
-                line!(),
-                elem.0,
-                elem.1,
-                elem.2
-            );
-        }
         let cex = Model::of_model(&self.cex.vars, model, true)?;
         Ok(Some(cex))
     }
@@ -748,10 +869,16 @@ impl<'a> LearnCtx<'a> {
             match self.get_model(timeout) {
                 // The current cex is refuted
                 Ok(None) => {
+                    log!("{}-{} the current example can be refuted", file!(), line!());
                     log_info!("Yes.");
                     break;
                 }
                 Ok(Some(model)) => {
+                    log!(
+                        "{}-{} the current example CANNOT be refuted",
+                        file!(),
+                        line!()
+                    );
                     log_info!("No.");
                     log_debug!("model: {}", model);
 
@@ -776,7 +903,12 @@ impl<'a> LearnCtx<'a> {
             *self.original_encs = self
                 .refine_enc(&original_enc)?
                 .expect("No appropriate template found");
-
+            // log!(
+            //     "{}-{} refined the encoding, obtained {:#?}",
+            //     file!(),
+            //     line!(),
+            //     self.original_encs
+            // );
             log_debug!("new_encs: ");
             for (k, v) in self.original_encs.iter() {
                 log_debug!("{}: {}", k, v);
@@ -801,6 +933,12 @@ pub fn work<'a>(
         log_debug!("The encoding used are {enc:?}");
     }
     let mut learn_ctx = LearnCtx::new(encs, cex, solver, profiler);
+    log!("{}-{} Created a new context", file!(), line!());
     learn_ctx.work()?;
+    log!(
+        "{}-{} finished working on the new context",
+        file!(),
+        line!(),
+    );
     Ok(())
 }

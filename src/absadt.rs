@@ -116,6 +116,7 @@ impl<'original> AbsConf<'original> {
         let mut instance = AbsInstance::new(original)?;
         let mut file = instance.instance_log_files("target")?;
         instance.dump_as_smt2(&mut file, "", false)?;
+        // TODO remove comment
         preproc::work(&mut instance);
         let cexs = Vec::new();
         let solver = conf.solver.spawn("absadt", Parser, original)?;
@@ -209,7 +210,6 @@ impl<'original> AbsConf<'original> {
         self.cexs.push(cex);
         let cex = self.get_combined_cex();
 
-        log_debug!("combined_cex: {}", cex);
         learn::work(&mut self.encs, &cex, &mut self.solver, self.profiler)?;
         log_info!("encs are updated");
         for (tag, enc) in self.encs.iter() {
@@ -250,19 +250,7 @@ impl<'original> AbsConf<'original> {
     /// Main CEGAR loop of Catalia
     fn run(&mut self) -> Res<either::Either<(), ()>> {
         //self.playground()?;
-        log_debug!(
-            "{}-{} Before the main CEGAR loop the encoding is {:#?}",
-            file!(),
-            line!(),
-            self.encs
-        );
         self.initialize_encs()?;
-        log_debug!(
-            "{}-{} The initialised encoding is encoding is {:#?}",
-            file!(),
-            line!(),
-            self.encs
-        );
         let mut file = self.instance.instance_log_files("preprocessed")?;
         self.instance.dump_as_smt2(&mut file, "", false)?;
 
@@ -277,13 +265,6 @@ impl<'original> AbsConf<'original> {
 
         let r = loop {
             self.epoch += 1;
-            log_debug!(
-                "{}-{} In epoch {} the encoding is {:?}",
-                file!(),
-                line!(),
-                self.epoch,
-                self.encs
-            );
             log_info!("epoch: {}", self.epoch);
             if conf.split_step {
                 pause("go?", self.profiler);
@@ -292,6 +273,7 @@ impl<'original> AbsConf<'original> {
             self.log_epoch(&encoded)?;
             match encoded.check_sat()? {
                 either::Left(()) => {
+                    log!("{}-{} it is SAT", file!(), line!());
                     break either::Left(());
                 }
                 either::Right(x) => {
@@ -526,7 +508,6 @@ impl<'a> AbsConf<'a> {
         // the order of clauses matters
         // now, it must be the original clauses first, and then the encoder clauses
         clauses.extend(clauses2);
-
         self.instance.clone_with_clauses(clauses, preds)
     }
 }

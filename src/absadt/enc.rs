@@ -117,7 +117,6 @@ pub trait Approximation {
 
 impl Approximation for Approx {
     fn apply(&self, arg_terms: &[Term]) -> Vec<Term> {
-        log!("{}-{} the arguments are {arg_terms:#?}", file!(), line!());
         let mut res = Vec::with_capacity(self.terms.len());
         for term in self.terms.iter() {
             let subst_map: VarHMap<_> = self
@@ -126,22 +125,7 @@ impl Approximation for Approx {
                 .map(|x| x.idx)
                 .zip(arg_terms.iter().cloned())
                 .collect();
-            for (idx, val) in subst_map.iter() {
-                log!(
-                    "{}-{} there is a mapping {} |-> {}",
-                    file!(),
-                    line!(),
-                    idx,
-                    val
-                );
-            }
             let substitution_res = term.subst_total(&subst_map);
-            log!(
-                "{}-{} Substituing all the approximation argument, the result is {:#?}",
-                file!(),
-                line!(),
-                substitution_res
-            );
             res.push(substitution_res.unwrap().0);
         }
         res
@@ -264,7 +248,6 @@ impl<A: Approximation> Enc<A> {
                         // Example: (enc-list-int-0 (tail l))
                         let f = enc_for_ty.get_ith_enc_rdf_name(i);
                         let arg = term::unsafe_fun(f, vec![term.clone()], typ::int());
-                        log_debug!("{}-{} the new arg is {arg}", file!(), line!());
                         args.push(arg);
                     }
                 }
@@ -373,22 +356,11 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
                 Some(enc) => {
                     let approx = enc.approxs.get(name).unwrap();
                     let mut new_args = Vec::new();
-                    log!(
-                        "{}-{} the args are {args:#?} encoded into {:#?}",
-                        file!(),
-                        line!(),
-                        args.iter().map(|a| self.encode_val(a)).collect::<Vec<_>>()
-                    );
                     for arg in args.iter() {
                         for encoded in self.encode_val(arg) {
                             new_args.push(encoded);
                         }
                     }
-                    log!(
-                        "{}-{} at the end the new args are {new_args:#?}",
-                        file!(),
-                        line!(),
-                    );
                     approx.apply(&new_args)
                 }
                 None => unimplemented!("no encoding for {}", name),
@@ -433,13 +405,13 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
             res = vec![term::and(res)];
         }
         debug_assert!(res.len() == 1 || typ.is_dtyp());
+        //log!("About to return {res:#?}");
         res
     }
     fn handle_dtypnew(&self, typ: &Typ, name: &str, argss: Vec<Vec<Term>>) -> Vec<Term> {
         let enc = self.encs.get(typ).unwrap();
         let approx = enc.approxs.get(name).unwrap();
         let args: Vec<_> = argss.iter().flatten().cloned().collect();
-        log_debug!("{}-{} The args are {args:?}", file!(), line!());
         approx.apply(&args)
     }
 
@@ -452,7 +424,7 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
                 encode_var(x, y)
             }
             RTerm::Cst(val) => self.encode_val(val),
-            RTerm::App { typ, op, args, .. } => self.handle_app(typ, op, args, encode_var),
+            RTerm::App { typ, op, args, .. } =>  self.handle_app(typ, op, args, encode_var),
             RTerm::DTypNew {
                 typ, name, args, ..
             } => {

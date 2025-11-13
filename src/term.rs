@@ -1615,41 +1615,58 @@ impl RTerm {
     ) -> Option<(Term, bool)> {
         use self::zip::*;
         let mut changed = false;
-        log!(
-            "{}-{} Trying to do a {} substitution over {self}",
-            file!(),
-            line!(),
-            if total { "total" } else { "partial" }
-        );
+        // log!(
+        //     "{}-{} Trying to do a {} substitution over {self}",
+        //     file!(),
+        //     line!(),
+        //     if total { "total" } else { "partial" }
+        // );
 
         let res = zip(
             &self.to_hcons(),
-            |_| Ok(None),
-            |zip_null| match zip_null {
-                ZipNullary::Cst(val) => Ok(cst(val.clone())),
-                ZipNullary::Var(typ, var) => {
-                    log!(
-                        "{}-{} The map {} contain a mapping for {var}",
-                        file!(),
-                        line!(),
-                        if map.var_get(var).is_some() {
-                            "does"
+            |_| {
+                // log!("{}-{} Executing down do over {arg:#?}", file!(),
+                //	 line!());
+                Ok(None)
+            },
+            |zip_null| {
+                // log!("{}-{} Executing null do over {zip_null}", file!(), line!());
+                match zip_null {
+                    ZipNullary::Cst(val) => Ok(cst(val.clone())),
+                    ZipNullary::Var(typ, var) => {
+                        // log!(
+                        //     "{}-{} The map {} contain a mapping for v_{var} {}",
+                        //     file!(),
+                        //     line!(),
+                        //     if map.var_get(var).is_some() {
+                        //         "does"
+                        //     } else {
+                        //         "does not"
+                        //     },
+                        //     if let Some(mapping) = map.var_get(var) {
+                        //         format!(", which is {mapping}")
+                        //     } else {
+                        //         format!("")
+                        //     }
+                        // );
+                        if let Some(term) = map.var_get(var) {
+                            debug_assert_eq! { typ, & term.typ() }
+                            changed = true;
+                            Ok(term)
+                        } else if total {
+                            Err(())
                         } else {
-                            "does not"
+                            Ok(term::var(var, typ.clone()))
                         }
-                    );
-                    if let Some(term) = map.var_get(var) {
-                        debug_assert_eq! { typ, & term.typ() }
-                        changed = true;
-                        Ok(term)
-                    } else if total {
-                        Err(())
-                    } else {
-                        Ok(term::var(var, typ.clone()))
                     }
                 }
             },
             |zip_op, typ, mut acc| {
+                // log!(
+                //     "{}-{} Executing app do over {zip_op} {typ} {acc:#?}",
+                //     file!(),
+                //     line!()
+                // );
                 let yielded = match zip_op {
                     ZipOp::Op(op) => term::app(op, acc),
                     ZipOp::New(name) => term::dtyp_new(typ.clone(), name.clone(), acc),
@@ -1719,12 +1736,6 @@ impl RTerm {
         if let Ok(term) = res {
             Some((term, changed))
         } else {
-            log!(
-                "{}-{} the result is an error of the form {:?}",
-                file!(),
-                line!(),
-                res
-            );
             None
         }
     }
