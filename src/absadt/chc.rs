@@ -123,6 +123,7 @@ impl AbsClause {
         writeln!(w, ")")?;
         Ok(())
     }
+
     pub fn forall_write<W, WriteVar, WritePrd>(
         &self,
         w: &mut W,
@@ -283,6 +284,7 @@ impl AbsInstance<'_> {
         mk_dir(&log_dir)?;
         Ok(log_dir)
     }
+
     pub fn clone_with_clauses(&self, clauses: Vec<AbsClause>, preds: Preds) -> Self {
         Self {
             clauses,
@@ -1013,10 +1015,13 @@ impl<'a> AbsInstance<'a> {
             .map(|x| x.is_left())
             .map_err(|e| log_info!("Portfolio solver failed with {}", e))
             .unwrap_or(false);
+        log!(@debug | "`b` has value {}", b);
         if b {
             return Ok(either::Left(()));
         }
         let res = super::chc_solver::run_spacer(self)?;
+        log!(@debug | "`res` has value {}", match res {either::Left(_) => "Left",
+													   either::Right(_) => "Right"});
         match res {
             either::Left(_) => Ok(either::Left(())),
             either::Right(proof) => {
