@@ -1,16 +1,17 @@
 ;; cons(a,l) a|->(w) and l |->(x, y, z)
 
-;; w curr elem
-;; x is it cons?
-;; y previous elem
-;; z are previous elements sorted?
+;; v curr elem
+;; w is it cons?
+;; x are previous elements sorted?
+;; y list lenght
 (
  ( "listOfInt"
    ( "conslistOfInt"
-	 ( (w x y z)
+	 ( (a v w x y)
+	   a
 	   1
-	   w
-	   (ite (or (= x 0) (and (<= w y) (= z 1))) 1 0)
+	   (ite (or (= w 0) (and (= w 1) (<= a v) (= x 1))) 1 0)
+	   (+ 1 y)
 	   )
 	 )
    ( "nillistOfInt"
@@ -18,6 +19,7 @@
 	   0
 	   0
 	   1
+	   0
 	   )
 	 )
    )
