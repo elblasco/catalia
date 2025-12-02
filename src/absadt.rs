@@ -363,7 +363,7 @@ impl<'a> AbsConf<'a> {
             (*pred, new_args)
         });
 
-        let res = chc::AbsClause {
+        chc::AbsClause {
             vars: new_vars,
             lhs_term,
             lhs_preds,
