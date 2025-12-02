@@ -204,6 +204,7 @@ fn remove_operator_connector(expr: &lexpr::Value, function_name: &str) -> Res<Ve
 }
 
 fn parse_list(expr: &lexpr::Value, infos: &VarInfos) -> Res<Term> {
+    log_debug!("`parse_list` with {expr}");
     let expression_exploded = if let Some(inner_list) = expr.as_cons() {
         Ok(inner_list)
     } else {
@@ -215,60 +216,63 @@ fn parse_list(expr: &lexpr::Value, infos: &VarInfos) -> Res<Term> {
     // first element determines structure
     match expression_exploded.car() {
         lexpr::Value::Number(num) => Ok(term::int(num.as_i64().unwrap())),
-        lexpr::Value::Symbol(s) => match &**s {
-            "not" => {
-                let list = remove_operator_connector(expression_exploded.cdr(), "not")?;
-                let term_to_negate = from_expression_to_term(&list[0], infos)?;
-                assert_eq!(term_to_negate.typ(), term::typ::bool());
-                Ok(term::not(term_to_negate))
-            }
-            "ite" => {
-                let list = remove_operator_connector(expression_exploded.cdr(), "ite")?;
-                let cond = from_expression_to_term(&list[0], infos)?;
-                let true_branch = from_expression_to_term(&list[1], infos)?;
-                let false_branch = from_expression_to_term(&list[2], infos)?;
-                assert_eq!(true_branch.typ(), false_branch.typ());
-                Ok(term::ite(cond, true_branch, false_branch))
-            }
-            bop_int!() => {
-                let list = remove_operator_connector(expression_exploded.cdr(), s)?;
-                log!("{list:?}");
-                let x = from_expression_to_term(&list[0], infos)?;
-                let y = from_expression_to_term(&list[1], infos)?;
-                assert_eq!(x.typ(), term::typ::int());
-                assert_eq!(y.typ(), term::typ::int());
-                match &**s {
-                    "=" => Ok(term::eq(x, y)),
-                    ">=" => Ok(term::ge(x, y)),
-                    ">" => Ok(term::gt(x, y)),
-                    "<=" => Ok(term::le(x, y)),
-                    "<" => Ok(term::lt(x, y)),
-                    "+" => Ok(term::add2(x, y)),
-                    "-" => Ok(term::sub2(x, y)),
-                    "*" => Ok(term::mul(vec![x, y])),
-                    _ => Err(Error::from_kind(errors::ErrorKind::Msg(format!(
-                        "Symbol {s} not recognised"
-                    )))),
+        lexpr::Value::Symbol(s) => {
+            log_debug!("{s:?}");
+            match &**s {
+                "not" => {
+                    let list = remove_operator_connector(expression_exploded.cdr(), "not")?;
+                    let term_to_negate = from_expression_to_term(&list[0], infos)?;
+                    assert_eq!(term_to_negate.typ(), term::typ::bool());
+                    Ok(term::not(term_to_negate))
                 }
-            }
-            bop_bool!() => {
-                let list = remove_operator_connector(expression_exploded.cdr(), s)?;
-                let terms = from_expression_to_boolean_terms(&list, infos)?;
-                for term in &terms {
-                    assert_eq!(term.typ(), term::typ::bool());
+                "ite" => {
+                    let list = remove_operator_connector(expression_exploded.cdr(), "ite")?;
+                    let cond = from_expression_to_term(&list[0], infos)?;
+                    let true_branch = from_expression_to_term(&list[1], infos)?;
+                    let false_branch = from_expression_to_term(&list[2], infos)?;
+                    assert_eq!(true_branch.typ(), false_branch.typ());
+                    Ok(term::ite(cond, true_branch, false_branch))
                 }
-                match &**s {
-                    "and" => Ok(term::and(terms)),
-                    "or" => Ok(term::or(terms)),
-                    _ => Err(Error::from_kind(errors::ErrorKind::Msg(format!(
-                        "Symbol {s} not recognised"
-                    )))),
+                bop_int!() => {
+                    let list = remove_operator_connector(expression_exploded.cdr(), s)?;
+                    let x = from_expression_to_term(&list[0], infos)?;
+                    let y = from_expression_to_term(&list[1], infos)?;
+                    assert_eq!(x.typ(), term::typ::int());
+                    assert_eq!(y.typ(), term::typ::int());
+                    match &**s {
+                        "=" => Ok(term::eq(x, y)),
+                        ">=" => Ok(term::ge(x, y)),
+                        ">" => Ok(term::gt(x, y)),
+                        "<=" => Ok(term::le(x, y)),
+                        "<" => Ok(term::lt(x, y)),
+                        "+" => Ok(term::add2(x, y)),
+                        "-" => Ok(term::sub2(x, y)),
+                        "*" => Ok(term::mul(vec![x, y])),
+                        _ => Err(Error::from_kind(errors::ErrorKind::Msg(format!(
+                            "Symbol {s} not recognised"
+                        )))),
+                    }
                 }
+                bop_bool!() => {
+                    let list = remove_operator_connector(expression_exploded.cdr(), s)?;
+                    let terms = from_expression_to_boolean_terms(&list, infos)?;
+                    log!("{terms:?}");
+                    for term in &terms {
+                        assert_eq!(term.typ(), term::typ::bool());
+                    }
+                    match &**s {
+                        "and" => Ok(term::and(terms)),
+                        "or" => Ok(term::or(terms)),
+                        _ => Err(Error::from_kind(errors::ErrorKind::Msg(format!(
+                            "Symbol {s} not recognised"
+                        )))),
+                    }
+                }
+                _ => Err(Error::from_kind(errors::ErrorKind::Msg(
+                    "Unknown symbol".to_string(),
+                ))),
             }
-            _ => Err(Error::from_kind(errors::ErrorKind::Msg(
-                "Unknown symbol".to_string(),
-            ))),
-        },
+        }
 
         _ => Err(Error::from_kind(errors::ErrorKind::Msg(
             "The symbol should either an ite expression or a binary operator over integers"

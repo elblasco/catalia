@@ -297,7 +297,7 @@ impl Encoder {
 impl TemplateScheduler {
     const N_TEMPLATES: usize = 8;
     const TEMPLATE_SCHEDULING: [TemplateSchedItem; Self::N_TEMPLATES] = [
-		TemplateSchedItem {
+        TemplateSchedItem {
             n_encs: 1,
             typ: TemplateType::BoundLinear { min: -1, max: 1 },
         },
