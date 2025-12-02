@@ -1153,5 +1153,4 @@ fn test_expansion() {
 
     let cex = my_instance.get_n_expansion(3);
     println!("{}", cex);
-    unimplemented!()
 }
