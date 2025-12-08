@@ -204,7 +204,6 @@ fn remove_operator_connector(expr: &lexpr::Value, function_name: &str) -> Res<Ve
 }
 
 fn parse_list(expr: &lexpr::Value, infos: &VarInfos) -> Res<Term> {
-    log_debug!("`parse_list` with {expr}");
     let expression_exploded = if let Some(inner_list) = expr.as_cons() {
         Ok(inner_list)
     } else {
@@ -217,7 +216,6 @@ fn parse_list(expr: &lexpr::Value, infos: &VarInfos) -> Res<Term> {
     match expression_exploded.car() {
         lexpr::Value::Number(num) => Ok(term::int(num.as_i64().unwrap())),
         lexpr::Value::Symbol(s) => {
-            log_debug!("{s:?}");
             match &**s {
                 "not" => {
                     let list = remove_operator_connector(expression_exploded.cdr(), "not")?;
@@ -256,7 +254,6 @@ fn parse_list(expr: &lexpr::Value, infos: &VarInfos) -> Res<Term> {
                 bop_bool!() => {
                     let list = remove_operator_connector(expression_exploded.cdr(), s)?;
                     let terms = from_expression_to_boolean_terms(&list, infos)?;
-                    log!("{terms:?}");
                     for term in &terms {
                         assert_eq!(term.typ(), term::typ::bool());
                     }

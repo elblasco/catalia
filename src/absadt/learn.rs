@@ -1,4 +1,3 @@
-use super::approximations::*;
 use super::chc::CEX;
 use super::enc::*;
 use crate::common::{smt::FullParser as Parser, Cex as Model, *};
@@ -86,78 +85,6 @@ impl TemplateInfo {
                 approxs.insert(
                     constr.to_string(),
                     Template::Linear(LinearApprox::new(coefs, &mut fvs, approx, min, max)),
-                );
-            }
-            let enc = Enc {
-                approxs,
-                typ: typ.clone(),
-                n_params: enc.n_params + 1,
-            };
-            new_encs.insert(typ.clone(), enc);
-        }
-
-        TemplateInfo {
-            parameters: fvs,
-            encs: new_encs,
-        }
-    }
-
-    fn new_approx(encs: BTreeMap<Typ, Encoder>, template: TemplateType) -> TemplateInfo {
-        let mut fvs = VarInfos::new();
-
-        let mut new_encs = BTreeMap::new();
-
-        let (chunk_size, coef_per_sel) = match template {
-            TemplateType::BoundLinear { .. } => (1, 1),
-            TemplateType::Linear => todo!(),
-        };
-
-        for (typ, enc) in encs.iter() {
-            let mut approxs = BTreeMap::new();
-            // Iterate through each ADT constructor
-            for constr in typ.dtyp_inspect().unwrap().0.news.keys() {
-                let (ty, prms) = typ.dtyp_inspect().unwrap();
-                let mut coefs = VarMap::new();
-                // each constructor has a set of selectors aka arguments
-                for (sel, ty) in ty.selectors_of(constr).unwrap() {
-                    let ty = ty.to_type(Some(prms)).unwrap();
-                    let n_coefficients = match encs.get(&ty) {
-                        Some(enc_for_ty) => {
-                            // prepare template coefficients for the current argument
-                            enc_for_ty.n_params + coef_per_sel
-                        }
-                        None => coef_per_sel,
-                    };
-                    let name = format!("{constr}-{sel}");
-                    // prepare coefs for constr-sel, which involes generating new template variables manged
-                    // at the top level (`fvs`)
-                    let named_coefs = prepare_coefs(name, &mut fvs, n_coefficients);
-                    coefs.push(named_coefs);
-                }
-                let mut approx = enc.approxs.get(constr).unwrap().clone();
-
-                let n_args: usize = coefs
-                    .chunks(chunk_size)
-                    .map(|x| x.iter().map(|_| 1).sum::<usize>())
-                    .sum();
-                // insert dummy variables for newly-introduced approximated integers
-                for _ in 0..(n_args - approx.args.len()) {
-                    approx.args.push(VarInfo::new(
-                        format!("tmp-{}", approx.args.next_index()),
-                        typ::int(),
-                        approx.args.next_index(),
-                    ));
-                }
-                let new_template =
-                    match template {
-                        TemplateType::BoundLinear { min, max } => Template::Linear(
-                            LinearApprox::new(coefs, &mut fvs, approx, Some(min), Some(max)),
-                        ),
-                        TemplateType::Linear => todo!(),
-                    };
-                approxs.insert(
-                    constr.to_string(),
-                    new_template, //Template::ListSortIte(ListSortApprox::new(coefs, &mut fvs, approx, min, max)),
                 );
             }
             let enc = Enc {
@@ -343,12 +270,6 @@ impl TemplateScheduler {
                 (k.clone(), enc)
             })
             .collect()
-        // log_debug!(
-        //     "{}-{} The restricted encoding with {n_encs} encodings gave {ret:#?}",
-        //     file!(),
-        //     line!()
-        // );
-        // ret
     }
 }
 
@@ -372,7 +293,7 @@ impl std::iter::Iterator for TemplateScheduler {
 
             let r = match next_template.typ {
                 TemplateType::BoundLinear { min, max } => {
-                    TemplateInfo::new_approx(enc, next_template.typ)
+                    TemplateInfo::new_linear_approx(enc, Some(min), Some(max))
                 }
                 TemplateType::Linear => TemplateInfo::new_linear_approx(enc, None, None),
             };
@@ -411,6 +332,92 @@ impl Template {
     fn constraint(&self) -> Option<Term> {
         match self {
             Template::Linear(approx) => approx.constraint(),
+        }
+    }
+}
+
+struct LinearApprox {
+    /// Existing approx
+    approx: Approx,
+    // approx template
+    // n_args * num of its approx
+    coef: VarMap<VarMap<VarIdx>>,
+    cnst: VarIdx,
+    min: Option<i64>,
+    max: Option<i64>,
+}
+
+impl Approximation for LinearApprox {
+    fn apply(&self, arg_terms: &[Term]) -> Vec<Term> {
+        let mut terms = self.approx.apply(arg_terms);
+        let mut res = vec![term::var(self.cnst, typ::int())];
+        let coefs = self.coef.iter().flatten();
+        for (arg, coef) in arg_terms.into_iter().zip(coefs) {
+            let t = term::mul(vec![term::var(*coef, typ::int()), arg.clone()]);
+            res.push(t);
+        }
+        terms.push(term::add(res));
+        terms
+    }
+}
+
+impl LinearApprox {
+    fn constraint(&self) -> Option<Term> {
+        let mut asserts = Vec::new();
+        for c in self
+            .coef
+            .iter()
+            .flatten()
+            .chain(std::iter::once(&self.cnst))
+        {
+            if let Some(min) = self.min {
+                let t = term::le(term::int(min), term::var(*c, typ::int()));
+                asserts.push(t);
+            }
+
+            if let Some(max) = self.max {
+                let t = term::le(term::var(*c, typ::int()), term::int(max));
+                asserts.push(t);
+            }
+        }
+
+        Some(term::and(asserts))
+    }
+    fn instantiate(&self, model: &Model) -> Approx {
+        let mut approx = self.approx.clone();
+
+        let cnst = &model[self.cnst];
+        let mut terms = vec![term::val(cnst.clone())];
+        for (coef, arg) in self.coef.iter().flatten().zip(approx.args.iter()) {
+            let val = &model[*coef];
+            let val = term::val(val.clone());
+            let var = term::var(arg.idx, arg.typ.clone());
+            terms.push(term::mul(vec![val, var]));
+        }
+        let term = term::add(terms);
+        approx.terms.push(term);
+
+        approx
+    }
+}
+
+impl LinearApprox {
+    fn new(
+        coef: VarMap<VarMap<VarIdx>>,
+        fvs: &mut VarInfos,
+        approx: Approx,
+        min: Option<i64>,
+        max: Option<i64>,
+    ) -> Self {
+        let idx = fvs.next_index();
+        let info = VarInfo::new("const_value".to_string(), typ::int(), idx);
+        fvs.push(info);
+        Self {
+            coef,
+            cnst: idx,
+            approx,
+            min,
+            max,
         }
     }
 }
@@ -683,17 +690,11 @@ impl<'a> LearnCtx<'a> {
             };
             match self.get_model(timeout) {
                 // The current cex is refuted
-                Ok(None) => {
-                    log!("{}-{} the current example can be refuted", file!(), line!());
+                Ok(None) => {                
                     log_info!("Yes.");
                     break;
                 }
                 Ok(Some(model)) => {
-                    log!(
-                        "{}-{} the current example CANNOT be refuted",
-                        file!(),
-                        line!()
-                    );
                     log_info!("No.");
                     log_debug!("model: {}", model);
 
@@ -718,6 +719,7 @@ impl<'a> LearnCtx<'a> {
             *self.original_encs = self
                 .refine_enc(&original_enc)?
                 .expect("No appropriate template found");
+			
             log_debug!("new_encs: ");
             for (k, v) in self.original_encs.iter() {
                 log_debug!("{}: {}", k, v);

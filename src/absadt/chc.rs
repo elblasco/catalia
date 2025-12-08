@@ -1015,13 +1015,10 @@ impl<'a> AbsInstance<'a> {
             .map(|x| x.is_left())
             .map_err(|e| log_info!("Portfolio solver failed with {}", e))
             .unwrap_or(false);
-        log!(@debug | "`b` has value {}", b);
         if b {
             return Ok(either::Left(()));
         }
         let res = super::chc_solver::run_spacer(self)?;
-        log!(@debug | "`res` has value {}", match res {either::Left(_) => "Left",
-													   either::Right(_) => "Right"});
         match res {
             either::Left(_) => Ok(either::Left(())),
             either::Right(proof) => {

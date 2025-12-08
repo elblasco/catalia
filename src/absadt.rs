@@ -45,7 +45,6 @@ use crate::info::{Pred, VarInfo};
 
 use crate::unsat_core::UnsatRes;
 
-mod approximations;
 mod catamorphism_parser;
 mod chc;
 mod chc_solver;
@@ -198,7 +197,6 @@ impl<'original> AbsConf<'original> {
         if let Some(b) = cex.check_sat_opt(&mut self.solver)? {
             // unsat
             if b {
-                log_debug!("The counter model is feasible so the answer is UNSAT");
                 return Ok(true);
             }
         } else {
@@ -206,10 +204,10 @@ impl<'original> AbsConf<'original> {
                 bail!("timeout");
             }
         }
-        log_debug!("We have a sporious counter-example");
         self.cexs.push(cex);
         let cex = self.get_combined_cex();
-
+		
+		log_debug!("combined_cex: {}", cex);
         learn::work(&mut self.encs, &cex, &mut self.solver, self.profiler)?;
         log_info!("encs are updated");
         for (tag, enc) in self.encs.iter() {
@@ -223,6 +221,7 @@ impl<'original> AbsConf<'original> {
     /// returns true if the instance is unsatisfiable
     fn synthesize_initial_encs(&mut self) -> Res<bool> {
         for n in (0..INIT_EXPANSION_DEPTH).rev() {
+			log_info!("initializing encs: {}", n);
             let cex = self.instance.get_n_expansion(n);
             if let Ok(x) = self.handle_cex(cex, true) {
                 return Ok(x);
@@ -254,14 +253,14 @@ impl<'original> AbsConf<'original> {
         let mut file = self.instance.instance_log_files("preprocessed")?;
         self.instance.dump_as_smt2(&mut file, "", false)?;
 
-        // if self.bmc()? {
-        //     return Ok(either::Right(()));
-        // }
+        if self.bmc()? {
+            return Ok(either::Right(()));
+        }
 
-        // Bounded model checking
-        // if self.synthesize_initial_encs()? {
-        //     return Ok(either::Right(()));
-        // }
+        //Bounded model checking
+        if self.synthesize_initial_encs()? {
+            return Ok(either::Right(()));
+        }
 
         // The approximation map
         let parsed_approximations = if let Some(catamorphism_str) = approximation_file {
@@ -270,23 +269,19 @@ impl<'original> AbsConf<'original> {
             Ok(BTreeMap::new())
         }?;
 
-        for appr in parsed_approximations.values() {
-            log_debug!("{:?}", appr.0);
-        }
-
         if !parsed_approximations.is_empty() {
             log_info!("Testing the input approximations");
             self.encs =
                 catamorphism_parser::build_encoding_from_approx(parsed_approximations, &self.encs)?;
             let encoded = self.encode();
             self.log_epoch(&encoded)?;
-			log_debug!("I produced the abstracted file");
+            log_debug!("I produced the abstracted file");
             match encoded.check_sat()? {
                 either::Left(()) => {
                     return Ok(either::Left(()));
                 }
                 either::Right(x) => {
-					let cex = self.instance.get_cex(&x);
+                    let cex = self.instance.get_cex(&x);
                     log_debug!("Found acounter-example {cex}");
                     return Ok(either::Right(()));
                 }
@@ -303,12 +298,10 @@ impl<'original> AbsConf<'original> {
             self.log_epoch(&encoded)?;
             match encoded.check_sat()? {
                 either::Left(()) => {
-                    log!("{}-{} it is SAT", file!(), line!());
                     break either::Left(());
                 }
                 either::Right(x) => {
                     let cex = self.instance.get_cex(&x);
-                    log_debug!("Found acounter-example {cex}");
                     if self.handle_cex(cex, false)? {
                         break either::Right(());
                     }
@@ -320,10 +313,7 @@ impl<'original> AbsConf<'original> {
 }
 
 impl<'a> AbsConf<'a> {
-    pub fn encode_clause(
-        &self,
-        c: &chc::AbsClause,
-    ) -> chc::AbsClause {
+    pub fn encode_clause(&self, c: &chc::AbsClause) -> chc::AbsClause {
         let ctx = enc::EncodeCtx::new(&self.encs);
         let (new_vars, introduced) = enc::tr_varinfos(&self.encs, &c.vars);
         let encode_var = |_, var| {
@@ -409,12 +399,12 @@ impl<'a> AbsConf<'a> {
             let var = VarInfo::new(format!("!arg_{}", i), ty.clone(), idx);
             vars.push(var);
         }
+
         // 2. generate head argument
         let head_argument = term::dtyp_new(
             typ.clone(),
             constr_name,
-            vars
-                .iter()
+            vars.iter()
                 .map(|v| term::var(v.idx, v.typ.clone()))
                 .collect(),
         );
@@ -429,20 +419,19 @@ impl<'a> AbsConf<'a> {
                         args: args.into(),
                     };
                     lhs_preds.push(app);
-                },
+                }
                 None => {
                     assert!(!var.typ.is_dtyp());
                 }
             }
         }
-
         let res_var = VarInfo::new("res", typ.clone(), vars.next_index());
         vars.push(res_var.clone());
         let constr_for_head = term::adteq(
             term::var(vars.last().unwrap().idx, typ.clone()),
             head_argument,
         );
-        let head_args = vec![res_var.idx];
+        let head_args = vec![res_var.idx];    
         chc::AbsClause {
             vars,
             lhs_term: constr_for_head,
@@ -470,10 +459,7 @@ impl<'a> AbsConf<'a> {
         for (typ, _) in self.encs.iter() {
             let pi = preds.next_index();
             let p = Pred::new(
-                format!(
-                    "encoder_pred_{}",
-                    enc::to_valid_symbol(typ.to_string()),
-                ),
+                format!("encoder_pred_{}", enc::to_valid_symbol(typ.to_string()),),
                 pi,
                 vec![typ.clone()].into(),
             );
@@ -501,10 +487,13 @@ impl<'a> AbsConf<'a> {
         &self,
         clauses: &[chc::AbsClause],
         enc_map: &BTreeMap<Typ, PrdIdx>,
-    ) -> Vec<chc::AbsClause> {
+    ) -> Vec<chc::AbsClause> {        
         let mut res = Vec::new();
         for c in clauses.iter() {
             let mut lhs_preds = c.lhs_preds.clone();
+			for lhs_pred in lhs_preds.iter(){
+				log_debug!("{}-{} {lhs_pred}", file!(), line!());
+			}
             // for each dtyp variable, we add the admissibility predicate
             for var in c.vars.iter() {
                 if !var.typ.is_dtyp() {
@@ -515,7 +504,7 @@ impl<'a> AbsConf<'a> {
                 let app = chc::PredApp {
                     pred: *approx_pred,
                     args: args.into(),
-                    };
+                };
                 lhs_preds.push(app);
             }
             res.push(chc::AbsClause {
@@ -528,22 +517,19 @@ impl<'a> AbsConf<'a> {
         res
     }
 
-    pub fn encode(&self) -> chc::AbsInstance {
+    pub fn encode(&self) -> chc::AbsInstance<'_> {
         // 1. append admissibility predicates and clauses
         let mut preds = self.instance.preds.clone();
         let (enc_map, clauses2) = self.generate_admissibility_preds(&mut preds);
+		
         let mut clauses = self.append_admissibility_check(&self.instance.clauses, &enc_map);
+		
         clauses.extend(clauses2);
 
         // 2. encode the clauses by using the current catamorphism
-        let preds = preds
-            .iter()
-            .map(|p| self.encode_pred(p))
-            .collect();
-
-        let clauses: Vec<_> = clauses.iter()
-            .map(|c| self.encode_clause(c))
-            .collect();
+        let preds: Preds = preds.iter().map(|p| self.encode_pred(p)).collect();
+		
+        let clauses: Vec<_> = clauses.iter().map(|c| self.encode_clause(c)).collect();
         self.instance.clone_with_clauses(clauses, preds)
     }
 }

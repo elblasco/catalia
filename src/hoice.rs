@@ -173,56 +173,55 @@ pub fn read_and_work<R: ::std::io::Read>(
 
             // Check-sat, start class.
             Parsed::CheckSat => {
-                // if instance.proofs() {
-                //     let mut old = instance.clone();
-                //     old.finalize()
-                //         .chain_err(|| "while finalizing original instance")?;
-                //     original_instance = Some(old)
-                // }
-                // log! { @info "Running top pre-processing" }
+                if instance.proofs() {
+                    let mut old = instance.clone();
+                    old.finalize()
+                        .chain_err(|| "while finalizing original instance")?;
+                    original_instance = Some(old)
+                }
+                log! { @info "Running top pre-processing" }
 
-                // let preproc_profiler = Profiler::new();
-                // match profile! {
-                //   |profiler| wrap {
-                //     preproc::work(& mut instance, & preproc_profiler)
-                //   } "top preproc"
-                // } {
-                //     Ok(()) => (),
-                //     Err(e) => {
-                //         if e.is_timeout() {
-                //             println!("timeout");
-                //             print_stats("top", profiler);
-                //             ::std::process::exit(0)
-                //         } else if e.is_unknown() {
-                //             println!("unknown");
-                //             continue;
-                //         } else if e.is_unsat() {
-                //             unsat = Some(unsat_core::UnsatRes::None)
-                //         } else {
-                //             bail!(e)
-                //         }
-                //     }
-                // }
-                // print_stats("top preproc", preproc_profiler);
+                let preproc_profiler = Profiler::new();
+                match profile! {
+                  |profiler| wrap {
+                    preproc::work(& mut instance, & preproc_profiler)
+                  } "top preproc"
+                } {
+                    Ok(()) => (),
+                    Err(e) => {
+                        if e.is_timeout() {
+                            println!("timeout");
+                            print_stats("top", profiler);
+                            ::std::process::exit(0)
+                        } else if e.is_unknown() {
+                            println!("unknown");
+                            continue;
+                        } else if e.is_unsat() {
+                            unsat = Some(unsat_core::UnsatRes::None)
+                        } else {
+                            bail!(e)
+                        }
+                    }
+                }
+                print_stats("top preproc", preproc_profiler);
 
-                model = // if instance.simplify_clauses() {
-                    // if let Some(maybe_model) = instance.is_trivial_conj()? {
-                    //     // Pre-processing already decided satisfiability.
-                    //     log! { @info "solved by pre-processing" }
-                    //     if !maybe_model.is_unsat() {
-                    //         println!("sat")
-                    //     } else {
-                    //         use crate::unsat_core::UnsatRes;
-                    //         println!("unsat");
-                    //         unsat = Some(if instance.proofs() {
-                    //             UnsatRes::empty_entry()
-                    //         } else {
-                    //             UnsatRes::None
-                    //         })
-                    //     }
-                    //     maybe_model.into_option()
-                // } else
-				{
+                model = if instance.simplify_clauses() {
+                    if let Some(maybe_model) = instance.is_trivial_conj()? {
+                        // Pre-processing already decided satisfiability.
+                        log! { @info "solved by pre-processing" }
+                        if !maybe_model.is_unsat() {
+                            println!("sat")
+                        } else {
+                            use crate::unsat_core::UnsatRes;
+                            println!("unsat");
+                            unsat = Some(if instance.proofs() {
+                                UnsatRes::empty_entry()
+                            } else {
+                                UnsatRes::None
+                            })
+                        }
+                        maybe_model.into_option()
+                    } else {
                         let arc_instance = Arc::new(instance);
 
                         let solve_res =
@@ -267,13 +266,13 @@ pub fn read_and_work<R: ::std::io::Read>(
                                 bail!(e)
                             }
                         }
+                    }
+                } else {
+                    None
                 };
-                //}  else {
-                //     None
-                // };
 
                 if stop_on_check {
-					log_debug!("{}-{} stop on check is true", file!(), line!());
+                    log_debug!("{}-{} stop on check is true", file!(), line!());
                     return Ok((model, instance));
                 }
             }

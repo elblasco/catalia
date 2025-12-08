@@ -83,32 +83,6 @@ impl Approx {
             terms: vec![term::int_zero()],
         }
     }
-
-    /// If-the-else for nil (of type Int List).
-    ///
-    /// Used for tests.
-    pub fn if_nil() -> Self {
-        todo!();
-        Approx::len_cons()
-    }
-
-    pub fn if_cons() -> Self {
-        todo!();
-        let mut infos = VarInfos::new();
-
-        let ite_idx = infos.next_index();
-        let info = VarInfo::new("l".to_string(), typ::int(), ite_idx);
-        infos.push(info);
-
-        // l + 1
-        let l = term::var(ite_idx, typ::int());
-        let one = term::cst(val::int(1));
-        let l_plus_one = term::app(Op::Add, vec![l, one]);
-        Self {
-            args: infos,
-            terms: vec![l_plus_one],
-        }
-    }
 }
 
 pub trait Approximation {
@@ -191,27 +165,16 @@ impl<A: Approximation> Enc<A> {
         introduced
     }
 
-    // pub fn len_ilist(ilist_typ: Typ) -> Enc<Approx> {
-    //     let mut approxs = BTreeMap::new();
-    //     approxs.insert("cons".to_string(), Approx::len_cons());
-    //     approxs.insert("nil".to_string(), Approx::len_nil());
-    //     Enc {
-    //         typ: ilist_typ,
-    //         n_params: 1,
-    //         approxs,
-    //     }
-    // }
-
-    // pub fn if_ilist() -> Encoder {
-    // 	let mut approxs = BTreeMap::new();
-    //     approxs.insert("cons".to_string(), Approx::len_cons());
-    //     approxs.insert("nil".to_string(), Approx::len_nil());
-    //     Enc {
-    //         typ: ilist_typ,
-    //         n_params: 1,
-    //         approxs,
-    //     }
-    // }
+    pub fn len_ilist(ilist_typ: Typ) -> Enc<Approx> {
+        let mut approxs = BTreeMap::new();
+        approxs.insert("cons".to_string(), Approx::len_cons());
+        approxs.insert("nil".to_string(), Approx::len_nil());
+        Enc {
+            typ: ilist_typ,
+            n_params: 1,
+            approxs,
+        }
+    }
 
     fn get_ith_enc_rdf_name(&self, i: usize) -> String {
         format!("{}-{}", self.generate_fun_name(), i)
@@ -405,7 +368,6 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
             res = vec![term::and(res)];
         }
         debug_assert!(res.len() == 1 || typ.is_dtyp());
-        //log!("About to return {res:#?}");
         res
     }
     fn handle_dtypnew(&self, typ: &Typ, name: &str, argss: Vec<Vec<Term>>) -> Vec<Term> {
@@ -463,7 +425,5 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
                 unimplemented!()
             }
         }
-        //log! { @debug | "encoding {} into {:?}", term.get(), ret};
-        //ret
     }
 }
