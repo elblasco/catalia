@@ -536,38 +536,12 @@ impl<'a> LearnCtx<'a> {
         self.cex
             .define_assert_with_enc(self.solver, self.original_encs)?;
         if let Some(tmo) = timeout {
-            log!(
-                "{}-{} timeout = {}",
-                file!(),
-                line!(),
-                format!("{}000", tmo)
-            );
             self.solver.set_option(":timeout", format!("{}000", tmo))?;
         } else {
-            log!("{}-{} timeout = 4294967295", file!(), line!());
             self.solver.set_option(":timeout", "4294967295")?;
         }
-        for (key, val) in self.original_encs.iter() {
-            log!(
-                "{}-{} The encoding for {} is {}",
-                file!(),
-                line!(),
-                if let Some((dtyp, _)) = key.dtyp_inspect() {
-                    &(dtyp.name)
-                } else {
-                    "not a dtype"
-                },
-                val.approxs.get("cons").unwrap()
-            )
-        }
 
-        log!("{}-{} I am about to check SAT", file!(), line!());
         let b = self.solver.check_sat()?;
-        log!(
-            "{}-{} finished checking SAT the result is {b:?}",
-            file!(),
-            line!()
-        );
         if !b {
             return Ok(None);
         }
@@ -635,20 +609,11 @@ impl<'a> LearnCtx<'a> {
         log_debug!("cex encoded with template");
         log_debug!("{form}");
 
-        let r = match self.get_template_model(&form, &template_info) {
-            Err(e) => panic!("{e}"),
-            Ok(ok) => ok.map(|m| template_info.instantiate(&m)),
-        };
-
-        // let r = self
-        //     .get_template_model(&form, &template_info)
-        //     .is_err_and(|err| panic!("{err}"));
-
-        // r.map(|m| {
-        //     let encs = template_info.instantiate(&m);
-        //     log_debug!("{}-{} The new encoding is {encs:?}", file!(), line!());
-        //     encs
-        // });
+		let r = self.get_template_model(&form, &template_info)?.map(|m| {
+            log_debug!("found model: {}", m);
+            let encs = template_info.instantiate(&m);
+            encs
+        });
         Ok(r)
     }
 
@@ -739,17 +704,7 @@ pub fn work<'a>(
     solver: &mut Solver<Parser>,
     profiler: &Profiler,
 ) -> Res<()> {
-    log_debug!("The cex is {cex}");
-    for enc in encs.iter() {
-        log_debug!("The encoding used are {enc:?}");
-    }
     let mut learn_ctx = LearnCtx::new(encs, cex, solver, profiler);
-    log!("{}-{} Created a new context", file!(), line!());
     learn_ctx.work()?;
-    log!(
-        "{}-{} finished working on the new context",
-        file!(),
-        line!(),
-    );
     Ok(())
 }
