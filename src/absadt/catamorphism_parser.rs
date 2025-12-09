@@ -32,21 +32,22 @@ pub fn parse_catamorphism(
                         "I was expecting the datatype name".to_string(),
                     ))),
                 }?;
-                let approxs_to_parse = if let Some(list_of_approxs_to_parse) = value.as_cons() {
-                    if let Some(single_approx_to_parse) = list_of_approxs_to_parse.cdr().as_cons() {
-                        Ok(single_approx_to_parse.to_vec().0)
-                    } else {
-                        Err(Error::from_kind(errors::ErrorKind::Msg(format!(
-                            "Failed to convert {} to Cons",
-                            value
-                        ))))
-                    }
-                } else {
-                    Err(Error::from_kind(errors::ErrorKind::Msg(format!(
-                        "Failed to convert {} to Cons",
-                        value
-                    ))))
-                }?;
+				let list_of_approxs_to_parse = value.as_cons().ok_or_else(|| {
+					Error::from_kind(errors::ErrorKind::Msg(format!(
+						"Failed to convert {} to Cons",
+						value
+					)))
+				})?;
+				
+				let single_approx_to_parse = list_of_approxs_to_parse.cdr().as_cons().ok_or_else(|| {
+					Error::from_kind(errors::ErrorKind::Msg(format!(
+						"Failed to convert {} to Cons",
+						value
+					)))
+				})?;
+				
+				let approxs_to_parse = single_approx_to_parse.to_vec().0;
+
                 for approximation_to_parse in approxs_to_parse.iter() {
                     let (constructor_name, terms, infos) =
                         from_cons_to_encoding_tuple(approximation_to_parse)?;
@@ -96,9 +97,10 @@ fn from_cons_to_encoding_tuple(input: &lexpr::Value) -> Res<(&str, Vec<Term>, Va
                     assert!(function_vec.len() >= 2);
                     let args_list = &function_vec[0];
                     if let Some(args) = args_list.as_cons() {
-                        for arg in args.to_vec().0.iter() {
+                        for arg in args.iter() {
+							let var_name = arg.car().as_name();
                             let var_idx = infos.next_index();
-                            let info = VarInfo::new(arg.as_name().unwrap(), typ::int(), var_idx);
+                            let info = VarInfo::new(var_name.unwrap(), typ::int(), var_idx);
                             infos.push(info);
                         }
                     }

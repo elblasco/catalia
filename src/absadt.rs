@@ -263,14 +263,9 @@ impl<'original> AbsConf<'original> {
         }
 
         // The approximation map
-        let parsed_approximations = if let Some(catamorphism_str) = approximation_file {
-            catamorphism_parser::parse_catamorphism(catamorphism_str)
-        } else {
-            Ok(BTreeMap::new())
-        }?;
-
-        if !parsed_approximations.is_empty() {
-            log_info!("Testing the input approximations");
+        if let Some(catamorphism_str) = approximation_file {
+            let parsed_approximations =  catamorphism_parser::parse_catamorphism(catamorphism_str)?;
+			log_info!("Testing the input approximations");
             self.encs =
                 catamorphism_parser::build_encoding_from_approx(parsed_approximations, &self.encs)?;
             let encoded = self.encode();
