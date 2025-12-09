@@ -491,9 +491,7 @@ impl<'a> AbsConf<'a> {
         let mut res = Vec::new();
         for c in clauses.iter() {
             let mut lhs_preds = c.lhs_preds.clone();
-			for lhs_pred in lhs_preds.iter(){
-				log_debug!("{}-{} {lhs_pred}", file!(), line!());
-			}
+			
             // for each dtyp variable, we add the admissibility predicate
             for var in c.vars.iter() {
                 if !var.typ.is_dtyp() {

@@ -99,8 +99,7 @@ impl Approximation for Approx {
                 .map(|x| x.idx)
                 .zip(arg_terms.iter().cloned())
                 .collect();
-            let substitution_res = term.subst_total(&subst_map);
-            res.push(substitution_res.unwrap().0);
+            res.push(term.subst_total(&subst_map).unwrap().0);
         }
         res
     }
