@@ -282,7 +282,7 @@ impl<'original> AbsConf<'original> {
                 }
                 either::Right(x) => {
                     let cex = self.instance.get_cex(&x);
-                    log_debug!("Found acounter-example {cex}");
+                    log_debug!("Found a counter-example {cex}");
                     return Ok(either::Right(()));
                 }
             }

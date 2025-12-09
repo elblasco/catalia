@@ -1167,7 +1167,7 @@ pub struct Config {
     pub ice: IceConf,
     /// Teacher configuration.
     pub teacher: TeacherConf,
-    /// Optional file that describe a catamorphism to apply
+    /// Optional file that describes a catamorphism to apply
     catamorphism_file: Option<String>,
 }
 impl ColorExt for Config {
