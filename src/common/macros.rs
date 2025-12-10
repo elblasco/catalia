@@ -6,7 +6,7 @@ macro_rules! expect {
   ($e:expr => |$err:ident| $($action:tt)*) => (
     match $e {
       Ok(res) => res,
-	  Err($err) => {
+      Err($err) => {
         $crate::errors::print_err(
           & { $($action)* }.into()
         ) ;

@@ -174,7 +174,6 @@ impl<A: Approximation> Enc<A> {
             approxs,
         }
     }
-
     fn get_ith_enc_rdf_name(&self, i: usize) -> String {
         format!("{}-{}", self.generate_fun_name(), i)
     }
@@ -271,10 +270,10 @@ impl<A: Approximation> Enc<A> {
             .map(|i| {
                 let name = self.get_ith_enc_rdf_name(i);
                 term::unsafe_fun(
-					name,
-					vec![term::var(*varidx, self.typ.clone())],
-					typ::int(),
-				)
+                    name,
+                    vec![term::var(varidx.clone(), self.typ.clone())],
+                    typ::int(),
+                )
             })
             .collect()
     }
@@ -347,7 +346,7 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
             .map(|arg| self.encode(arg, encode_var))
             .collect::<Vec<_>>();
         if argss.len() == 0 {
-            return vec![term::app(*op, Vec::new())];
+            return vec![term::app(op.clone(), Vec::new())];
         }
         let l = argss[0].len();
         let mut res = Vec::with_capacity(l);
@@ -377,7 +376,6 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
         let args: Vec<_> = argss.iter().flatten().cloned().collect();
         approx.apply(&args)
     }
-
     pub fn encode<EncodeVar>(&self, term: &'a Term, encode_var: &EncodeVar) -> Vec<Term>
     where
         EncodeVar: Fn(&'a Typ, &'a VarIdx) -> Vec<Term>,
@@ -387,7 +385,7 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
                 encode_var(x, y)
             }
             RTerm::Cst(val) => self.encode_val(val),
-            RTerm::App { typ, op, args, .. } =>  self.handle_app(typ, op, args, encode_var),
+            RTerm::App { typ, op, args, .. } => self.handle_app(typ, op, args, encode_var),
             RTerm::DTypNew {
                 typ, name, args, ..
             } => {

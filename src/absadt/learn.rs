@@ -29,7 +29,7 @@ impl TemplateInfo {
     /// Define paramter constants
     fn define_parameters(&self, solver: &mut Solver<Parser>) -> Res<()> {
         for var in self.parameters.iter() {
-            solver.declare_const(&format!("v_{}", var.idx), var.typ.to_string())?;
+            solver.declare_const(&format!("v_{}", var.idx), &var.typ.to_string())?;
         }
         Ok(())
     }
@@ -202,7 +202,7 @@ impl Encoder {
         n_encs: usize,
     ) -> Encoder {
         let (ty, params) = typ.dtyp_inspect().unwrap();
-		
+
         let mut new_approxs = BTreeMap::new();
         for (cnstr, args) in ty.news.iter() {
             let approx = self.approxs.get(cnstr).unwrap();
@@ -290,7 +290,7 @@ impl std::iter::Iterator for TemplateScheduler {
                     continue 'a;
                 }
             }
-			
+
             let enc = self.restrict_approx(next_template.n_encs - 1);
 
             let r = match next_template.typ {
@@ -535,7 +535,7 @@ impl<'a> LearnCtx<'a> {
         self.cex
             .define_assert_with_enc(&mut self.solver, &self.original_encs)?;
         if let Some(tmo) = timeout {
-            self.solver.set_option(":timeout", format!("{}000", tmo))?;
+            self.solver.set_option(":timeout", &format!("{}000", tmo))?;
         } else {
             self.solver.set_option(":timeout", "4294967295")?;
         }
@@ -596,7 +596,7 @@ impl<'a> LearnCtx<'a> {
             let mut terms =
                 encoder.encode(&term::not(self.cex.term.clone()), &|_: &Typ, v: &VarIdx| {
                     let v = &m[*v];
-					let terms = encoder.encode_val(v);
+                    let terms = encoder.encode_val(v);
                     terms
                 });
             form.append(&mut terms)
@@ -606,7 +606,7 @@ impl<'a> LearnCtx<'a> {
         log_debug!("cex encoded with template");
         log_debug!("{}", form);
 
-		let r = self.get_template_model(&form, &template_info)?.map(|m| {
+        let r = self.get_template_model(&form, &template_info)?.map(|m| {
             log_debug!("found model: {}", m);
             let encs = template_info.instantiate(&m);
             encs
