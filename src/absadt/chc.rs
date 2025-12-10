@@ -123,7 +123,6 @@ impl AbsClause {
         writeln!(w, ")")?;
         Ok(())
     }
-
     pub fn forall_write<W, WriteVar, WritePrd>(
         &self,
         w: &mut W,
@@ -284,7 +283,6 @@ impl AbsInstance<'_> {
         mk_dir(&log_dir)?;
         Ok(log_dir)
     }
-
     pub fn clone_with_clauses(&self, clauses: Vec<AbsClause>, preds: Preds) -> Self {
         Self {
             clauses,

@@ -301,7 +301,11 @@ fn check_not_boolean_use_inner(t: &Term) -> bool {
         RTerm::Var(_, _) | RTerm::Cst(_) => false,
         RTerm::App { op, args, .. } if *op == Op::Not => {
             debug_assert_eq!(args.len(), 1);
-            !(matches!(&args[0].get(), RTerm::App { op: Op::Eql, .. }))
+			let a = &args[0];
+			match a.get() {
+				RTerm::App { op, .. } if *op == Op::Eql => false,
+                _ => true,
+			}
         }
         RTerm::App { args, .. } => args.iter().any(|x| check_not_boolean_use_inner(x)),
         RTerm::CArray { term, .. } => check_not_boolean_use_inner(term),

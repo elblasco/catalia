@@ -138,7 +138,7 @@ pub fn read_and_work<R: ::std::io::Read>(
             break 'parse_work;
         }
         let parse_res = parser_cxt
-            .parser(buf, line_off, &profiler)
+            .parser(&buf, line_off, &profiler)
             .parse(&mut instance);
 
         line_off += lines_parsed;
@@ -269,7 +269,6 @@ pub fn read_and_work<R: ::std::io::Read>(
                 };
 
                 if stop_on_check {
-                    log_debug!("{}-{} stop on check is true", file!(), line!());
                     return Ok((model, instance));
                 }
             }
@@ -306,7 +305,7 @@ pub fn read_and_work<R: ::std::io::Read>(
                     // Simplify model before writing it.
                     // instance.simplify_pred_defs(model) ? ;
                     let stdout = &mut stdout();
-                    instance.write_model(model, stdout)?
+                    instance.write_model(&model, stdout)?
                 } else {
                     bail!("no model available")
                 }

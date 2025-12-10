@@ -29,7 +29,7 @@ impl TemplateInfo {
     /// Define paramter constants
     fn define_parameters(&self, solver: &mut Solver<Parser>) -> Res<()> {
         for var in self.parameters.iter() {
-            solver.declare_const(format!("v_{}", var.idx), var.typ.to_string())?;
+            solver.declare_const(&format!("v_{}", var.idx), var.typ.to_string())?;
         }
         Ok(())
     }
@@ -84,7 +84,7 @@ impl TemplateInfo {
                 }
                 approxs.insert(
                     constr.to_string(),
-                    Template::Linear(LinearApprox::new(coefs, &mut fvs, approx, min, max)),
+                    Template::Linear(LinearApprox::new(coefs.into(), &mut fvs, approx, min, max)),
                 );
             }
             let enc = Enc {
@@ -104,7 +104,7 @@ impl TemplateInfo {
     fn instantiate(&self, model: &Model) -> BTreeMap<Typ, Encoder> {
         self.encs
             .iter()
-            .map(|(k, v)| (k.clone(), v.instantiate(model)))
+            .map(|(k, v)| (k.clone(), v.instantiate(&model)))
             .collect()
     }
 
@@ -130,7 +130,6 @@ struct TemplateScheduler {
     enc: BTreeMap<Typ, Encoder>,
 }
 
-#[derive(Clone, Copy)]
 enum TemplateType {
     BoundLinear { min: i64, max: i64 },
     Linear,
@@ -189,7 +188,7 @@ impl Approx {
         }
         let new_terms = self.terms.iter().take(n_encs).cloned().collect();
         Approx {
-            args: new_args,
+            args: new_args.into(),
             terms: new_terms,
         }
     }
@@ -203,6 +202,7 @@ impl Encoder {
         n_encs: usize,
     ) -> Encoder {
         let (ty, params) = typ.dtyp_inspect().unwrap();
+		
         let mut new_approxs = BTreeMap::new();
         for (cnstr, args) in ty.news.iter() {
             let approx = self.approxs.get(cnstr).unwrap();
@@ -223,6 +223,7 @@ impl Encoder {
 
 impl TemplateScheduler {
     const N_TEMPLATES: usize = 8;
+	
     const TEMPLATE_SCHEDULING: [TemplateSchedItem; Self::N_TEMPLATES] = [
         TemplateSchedItem {
             n_encs: 1,
@@ -289,6 +290,7 @@ impl std::iter::Iterator for TemplateScheduler {
                     continue 'a;
                 }
             }
+			
             let enc = self.restrict_approx(next_template.n_encs - 1);
 
             let r = match next_template.typ {
@@ -400,7 +402,6 @@ impl LinearApprox {
         approx
     }
 }
-
 impl LinearApprox {
     fn new(
         coef: VarMap<VarMap<VarIdx>>,
@@ -459,7 +460,7 @@ fn test_linear_approx_apply() {
     println!("t2: {}", t2);
     for (a, b) in [(4i64, 3i64), (1, 2), (-4, 0)].into_iter() {
         let subst: VarHMap<_> = (0..2)
-            .map(VarIdx::from)
+            .map(|x| VarIdx::from(x))
             .zip(vec![term::val(val::int(a)), term::val(val::int(b))].into_iter())
             .collect();
         assert_eq!(
@@ -506,9 +507,8 @@ impl<'a> LearnCtx<'a> {
     ///
     /// Assumption: Data types are all defined.
     fn define_enc_funs(&mut self) -> Res<()> {
-        let ctx = super::enc::EncodeCtx::new(self.original_encs);
+        let ctx = super::enc::EncodeCtx::new(&self.original_encs);
         let mut funs = Vec::new();
-
         for enc in self.original_encs.values() {
             enc.generate_enc_fun(&ctx, &mut funs)?;
         }
@@ -530,22 +530,19 @@ impl<'a> LearnCtx<'a> {
 
     fn get_model(&mut self, timeout: Option<usize>) -> Res<Option<Model>> {
         self.solver.reset()?;
-
         self.define_datatypes()?;
         self.define_enc_funs()?;
         self.cex
-            .define_assert_with_enc(self.solver, self.original_encs)?;
+            .define_assert_with_enc(&mut self.solver, &self.original_encs)?;
         if let Some(tmo) = timeout {
             self.solver.set_option(":timeout", format!("{}000", tmo))?;
         } else {
             self.solver.set_option(":timeout", "4294967295")?;
         }
-
         let b = self.solver.check_sat()?;
         if !b {
             return Ok(None);
         }
-
         let model = self.solver.get_model()?;
         let model = Parser.fix_model(model)?;
         let cex = Model::of_model(&self.cex.vars, model, true)?;
@@ -559,8 +556,8 @@ impl<'a> LearnCtx<'a> {
     ) -> Res<Option<Model>> {
         self.solver.reset()?;
         self.solver.set_option(":timeout", "4294967295")?;
-        template_info.define_parameters(self.solver)?;
-        template_info.define_constraints(self.solver)?;
+        template_info.define_parameters(&mut self.solver)?;
+        template_info.define_constraints(&mut self.solver)?;
 
         writeln!(self.solver, "; Target term")?;
         writeln!(self.solver, "(assert {})", form)?;
@@ -575,7 +572,6 @@ impl<'a> LearnCtx<'a> {
         let cex = Model::of_model(&template_info.parameters, model, true)?;
         Ok(Some(cex))
     }
-
     fn get_instantiation(
         &mut self,
         template_info: TemplateInfo,
@@ -600,14 +596,15 @@ impl<'a> LearnCtx<'a> {
             let mut terms =
                 encoder.encode(&term::not(self.cex.term.clone()), &|_: &Typ, v: &VarIdx| {
                     let v = &m[*v];
-                    encoder.encode_val(v)
+					let terms = encoder.encode_val(v);
+                    terms
                 });
             form.append(&mut terms)
         }
         // solve the form
         let form = term::and(form);
         log_debug!("cex encoded with template");
-        log_debug!("{form}");
+        log_debug!("{}", form);
 
 		let r = self.get_template_model(&form, &template_info)?.map(|m| {
             log_debug!("found model: {}", m);
@@ -623,12 +620,8 @@ impl<'a> LearnCtx<'a> {
     ) -> Res<Option<BTreeMap<Typ, Encoder>>> {
         for template_info in TemplateScheduler::new(original_encs.clone()) {
             match self.get_instantiation(template_info)? {
-                None => {
-                    continue;
-                }
-                Some(new_encs) => {
-                    return Ok(Some(new_encs));
-                }
+                None => continue,
+                Some(new_encs) => return Ok(Some(new_encs)),
             }
         }
         Ok(None)
@@ -639,7 +632,6 @@ impl<'a> LearnCtx<'a> {
         // Appendinx them to the existing encodings
         let original_enc = self.original_encs.clone();
         let mut first = true;
-
         loop {
             // 1. Check if the new encoding can refute the counterexample
             log_info!("checking enc refutes cex...");
@@ -655,7 +647,7 @@ impl<'a> LearnCtx<'a> {
             };
             match self.get_model(timeout) {
                 // The current cex is refuted
-                Ok(None) => {                
+                Ok(None) => {
                     log_info!("Yes.");
                     break;
                 }
@@ -684,7 +676,7 @@ impl<'a> LearnCtx<'a> {
             *self.original_encs = self
                 .refine_enc(&original_enc)?
                 .expect("No appropriate template found");
-			
+
             log_debug!("new_encs: ");
             for (k, v) in self.original_encs.iter() {
                 log_debug!("{}: {}", k, v);

@@ -232,7 +232,7 @@ impl<A: Approximation> Enc<A> {
         // (ite (is-<tag> target_data) res cont)
         let check = term::dtyp_tst(tag, target_data);
         res.into_iter()
-            .zip(cont)
+            .zip(cont.into_iter())
             .map(|(res, cont)| term::app(Op::Ite, vec![check.clone(), res, cont]))
             .collect()
     }
@@ -270,7 +270,11 @@ impl<A: Approximation> Enc<A> {
         (0..self.n_params)
             .map(|i| {
                 let name = self.get_ith_enc_rdf_name(i);
-                term::unsafe_fun(name, vec![term::var(*varidx, self.typ.clone())], typ::int())
+                term::unsafe_fun(
+					name,
+					vec![term::var(*varidx, self.typ.clone())],
+					typ::int(),
+				)
             })
             .collect()
     }
@@ -307,7 +311,6 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
     pub fn new(encs: &'a BTreeMap<Typ, Enc<Approx>>) -> Self {
         Self { encs }
     }
-
     pub fn encode_val(&self, val: &Val) -> Vec<Term> {
         match val.get() {
             val::RVal::N(_) => todo!(),
@@ -329,7 +332,6 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
             },
         }
     }
-
     fn handle_app<EncodeVar>(
         &self,
         typ: &Typ,
@@ -344,7 +346,7 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
             .into_iter()
             .map(|arg| self.encode(arg, encode_var))
             .collect::<Vec<_>>();
-        if argss.is_empty() {
+        if argss.len() == 0 {
             return vec![term::app(*op, Vec::new())];
         }
         let l = argss[0].len();
@@ -357,7 +359,7 @@ impl<'a, Approx: Approximation> EncodeCtx<'a, Approx> {
             }
             let o = match op {
                 Op::AdtEql => Op::Eql,
-                o => *o,
+                o => o.clone(),
             };
             res.push(term::app(o, new_args));
         }

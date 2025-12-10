@@ -18,7 +18,7 @@
 (assert (forall ((dummy Int)) (=> true (alt (cons 1 nil)))))
 
 (assert (forall ((x Int) (y Int) (l (Lst Int)))
-  (=>
+  (=> 
     (and (alt (cons y l)) (= (+ x y) 0))
     (alt (cons x (cons y l)))
   )
@@ -27,14 +27,14 @@
 (assert (forall ((dummy Int)) (=> true (even nil))))
 
 (assert (forall ((x Int) (y Int) (l (Lst Int)))
-  (=>
+  (=> 
     (even l)
     (even (cons x (cons y l)))
   )
 ))
 
 (assert (forall ((l (Lst Int)) (l2 (Lst Int)) (h Int))
-  (=>
+  (=> 
     (and (even l) (alt l) (= l (cons h l2)))
     (< h 0)
   )
