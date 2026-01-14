@@ -580,7 +580,6 @@ struct IteApprox {
 impl IteApprox {
 	const ITE_PART: usize = 3;
 
-	
 	fn prepare_coefs<S>(varname: S, fvs: &mut VarInfos, n: usize) -> VarMap<VarIdx>
 	where
 		S: AsRef<str>,
