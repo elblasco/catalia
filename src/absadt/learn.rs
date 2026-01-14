@@ -331,6 +331,9 @@ impl std::iter::Iterator for TemplateScheduler {
                 TemplateType::Linear => {
                     TemplateInfo::new_linear_approx(&self.enc, next_template.n_encs, None, None, false)
                 }
+                TemplateType::Linear => {
+                    TemplateInfo::new_linear_approx(enc,None, None)
+                }
 				TemplateType::BoundIte { min, max } => {
 					TemplateInfo::new_ite_approx(&self.enc, next_template.n_encs, Some(min), Some(max))
 				}
