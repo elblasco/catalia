@@ -251,49 +251,61 @@ impl std::fmt::Display for TemplateSchedItem {
 }
 
 impl TemplateScheduler {
-    const N_TEMPLATES: usize = 10;
+    const N_TEMPLATES: usize = 1;
 
     const TEMPLATE_SCHEDULING: [TemplateSchedItem; Self::N_TEMPLATES] = [
-        TemplateSchedItem {
+		TemplateSchedItem {
             n_encs: 1,
-            typ: TemplateType::BoundLinear { min: -1, max: 1 },
+            typ: TemplateType::BoundIte { min: -1, max: 1 },
         },
-        TemplateSchedItem {
-            n_encs: 2,
-            typ: TemplateType::BoundStructuredLinear { min: -1, max: 1 },
-        },
-        TemplateSchedItem {
-            n_encs: 2,
-            typ: TemplateType::BoundLinear { min: -1, max: 1 },
-        },
-        TemplateSchedItem {
-            n_encs: 3,
-            typ: TemplateType::BoundStructuredLinear { min: -1, max: 1 },
-        },
-        TemplateSchedItem {
-            n_encs: 3,
-            typ: TemplateType::BoundLinear { min: -1, max: 1 },
-        },
-        TemplateSchedItem {
-            n_encs: 3,
-            typ: TemplateType::BoundLinear { min: -2, max: 2 },
-        },
-        TemplateSchedItem {
-            n_encs: 3,
-            typ: TemplateType::BoundLinear { min: -4, max: 4 },
-        },
-        TemplateSchedItem {
-            n_encs: 3,
-            typ: TemplateType::BoundLinear { min: -32, max: 32 },
-        },
-        TemplateSchedItem {
-            n_encs: 3,
-            typ: TemplateType::BoundLinear { min: -64, max: 64 },
-        },
-        TemplateSchedItem {
-            n_encs: 3,
-            typ: TemplateType::Linear,
-        },
+        // TemplateSchedItem {
+        //     n_encs: 1,
+        //     typ: TemplateType::BoundLinear { min: -1, max: 1 },
+        // },
+		// TemplateSchedItem {
+        //     n_encs: 1,
+        //     typ: TemplateType::BoundLinear { min: -2, max: 2 },
+        // },
+        // TemplateSchedItem {
+        //     n_encs: 2,
+        //     typ: TemplateType::BoundStructuredLinear { min: -1, max: 1 },
+        // },
+        // TemplateSchedItem {
+        //     n_encs: 2,
+        //     typ: TemplateType::BoundLinear { min: -1, max: 1 },
+        // },
+        // TemplateSchedItem {
+        //     n_encs: 3,
+        //     typ: TemplateType::BoundStructuredLinear { min: -1, max: 1 },
+        // },
+        // TemplateSchedItem {
+        //     n_encs: 3,
+        //     typ: TemplateType::BoundLinear { min: -1, max: 1 },
+        // },
+        // TemplateSchedItem {
+        //     n_encs: 3,
+        //     typ: TemplateType::BoundLinear { min: -2, max: 2 },
+        // },
+        // TemplateSchedItem {
+        //     n_encs: 3,
+        //     typ: TemplateType::BoundLinear { min: -4, max: 4 },
+        // },
+        // TemplateSchedItem {
+        //     n_encs: 3,
+        //     typ: TemplateType::BoundLinear { min: -32, max: 32 },
+        // },
+        // TemplateSchedItem {
+        //     n_encs: 3,
+        //     typ: TemplateType::BoundLinear { min: -64, max: 64 },
+        // },
+		// TemplateSchedItem {
+        //     n_encs: 1,
+        //     typ: TemplateType::BoundIte { min: -2, max: 2 },
+        // },
+        // TemplateSchedItem {
+        //     n_encs: 3,
+        //     typ: TemplateType::Linear,
+        // },
     ];
 
     fn new(enc: BTreeMap<Typ, Encoder>) -> Self {
@@ -687,7 +699,7 @@ impl IteApprox {
 		//			let t = term::le(term::int(multiplier * min), term::var(*coef, typ::int()));
 		//			asserts.push(t);
 		//		}
-				
+
 		//		if let Some(max) = self.max {
 		//			let t = term::le(term::var(*coef, typ::int()), term::int(multiplier * max));
 		//			asserts.push(t);
@@ -702,7 +714,7 @@ impl IteApprox {
 		//			let t = term::le(term::int(multiplier * min), term::var(*cnst, typ::int()));
 		//			asserts.push(t);
 		//		}
-				
+
 		//		if let Some(max) = self.max {
 		//			let t = term::le(term::var(*cnst, typ::int()), term::int(multiplier * max));
 		//			asserts.push(t);
@@ -711,16 +723,16 @@ impl IteApprox {
 		// }
 
 		// for term in self.approx.terms.iter() {
-		//	match term.get() {
-		//		RTerm::App { depth, typ, op: Op::Ite, args } => {
-		//			asserts.push(
-		//				term::not(term::eq(
-		//					args[1].clone(), args[2].clone()
-		//				))
-		//			);
-		//		},
-		//		_ => ()
-		//	}
+		// 	match term.get() {
+		// 		RTerm::App { depth, typ, op: Op::Ite, args } => {
+		// 			asserts.push(
+		// 				term::not(term::eq(
+		// 					args[1].clone(), args[2].clone()
+		// 				))
+		// 			);
+		// 		},
+		// 		_ => ()
+		// 	}
 		// }
 		
 		Some(term::and(asserts))
