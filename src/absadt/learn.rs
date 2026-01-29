@@ -1214,6 +1214,7 @@ impl<'a> LearnCtx<'a> {
         let form = term::and(form);
         log_debug!("cex encoded with template");
         log_debug!("{}", form);
+		log_debug!("expanded cex\n{}", Self::expand_term(&form));
 
         let r = self.get_template_model(&form, &template_info)?.map(|m| {
             log_debug!("found model: {}", m);
@@ -1222,6 +1223,49 @@ impl<'a> LearnCtx<'a> {
         });
         Ok(r)
     }
+
+	// Assumes that the terms are from a multiplication, it tries to put `to_pushdown`
+	// as deep as possible into `to_modify`.
+	// `to_modify` must be expanded suing `expand_term` otherwise it will not reach the fixpoint
+	fn pushdown_mul(to_pushdown: &Term, to_modify: &Term) -> Term {
+			match to_modify.get() {
+				RTerm::Cst(_) | RTerm::Var(_, _) => term::mul(vec![to_pushdown.clone(), to_modify.clone()]),
+				RTerm::App {depth: _, typ: _, op: Op::Ite, args} => {
+					let boolean_condition = Self::expand_term(&args[0]);
+					let true_branch = Self::pushdown_mul(to_pushdown, &args[1]);
+					let false_branch = Self::pushdown_mul(to_pushdown, &args[2]);
+					term::ite(boolean_condition, true_branch, false_branch)
+				}
+				RTerm::App {depth: _, typ: _, op: Op::Add, args} =>
+					term::add(args.iter().map(|sub_term| Self::pushdown_mul(to_pushdown, sub_term)).collect()),
+				RTerm::App {depth: _, typ: _, op: Op::Sub, args} =>
+					term::sub(args.iter().map(|sub_term| Self::pushdown_mul(to_pushdown, sub_term)).collect()),
+				RTerm::App {depth: _, typ: _, op: Op::Mul, args: _} => {
+					term::mul(vec![to_pushdown.clone(), to_modify.clone()])
+				}
+				RTerm::App {depth: _, typ: _, op: Op::CMul, args: _} => {
+					let (cnst, term) = to_modify.cmul_inspect().unwrap();
+					term::cmul(cnst.get().clone(), Self::pushdown_mul(to_pushdown, &term))
+				}
+				_ => panic!("I am not sure this is supposed to be possible, anyhow the trigger was pushing {to_pushdown} into {to_modify}")
+			}
+		}
+
+	// Expand a given term by applying the mul operator whenever possible
+	fn expand_term(original_term: &Term) -> Term {
+		match original_term.get() {
+			RTerm::Cst(_) | RTerm::Var(_, _) => original_term.clone(),
+			RTerm::App { depth: _, typ: _, op: Op::Mul, args } =>
+				args.iter()
+					.rev()
+					.map(|term| Self::expand_term(term))
+					.reduce(|acc, linearised| Self::pushdown_mul(&linearised, &acc))
+					.unwrap_or_else(|| panic!("Faccio bordello figah")),
+			RTerm::App { depth: _, typ: _, op, args } =>
+				term::app(*op, args.iter().map(|sub_term| Self::expand_term(sub_term)).collect()),
+			_ => panic!("{original_term} not possible in NIA"),
+		}
+	}
 
     fn refine_enc(
         &mut self,
