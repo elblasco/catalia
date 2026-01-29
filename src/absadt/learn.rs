@@ -1240,9 +1240,8 @@ impl<'a> LearnCtx<'a> {
 					term::add(args.iter().map(|sub_term| Self::pushdown_mul(to_pushdown, sub_term)).collect()),
 				RTerm::App {depth: _, typ: _, op: Op::Sub, args} =>
 					term::sub(args.iter().map(|sub_term| Self::pushdown_mul(to_pushdown, sub_term)).collect()),
-				RTerm::App {depth: _, typ: _, op: Op::Mul, args: _} => {
-					term::mul(vec![to_pushdown.clone(), to_modify.clone()])
-				}
+				RTerm::App {depth: _, typ: _, op: Op::Mul, args: _} =>
+					term::mul(vec![to_pushdown.clone(), to_modify.clone()]),
 				RTerm::App {depth: _, typ: _, op: Op::CMul, args: _} => {
 					let (cnst, term) = to_modify.cmul_inspect().unwrap();
 					term::cmul(cnst.get().clone(), Self::pushdown_mul(to_pushdown, &term))
@@ -1256,11 +1255,12 @@ impl<'a> LearnCtx<'a> {
 		match original_term.get() {
 			RTerm::Cst(_) | RTerm::Var(_, _) => original_term.clone(),
 			RTerm::App { depth: _, typ: _, op: Op::Mul, args } =>
-				args.iter()
-					.rev()
-					.map(|term| Self::expand_term(term))
-					.reduce(|acc, linearised| Self::pushdown_mul(&linearised, &acc))
-					.unwrap_or_else(|| panic!("Faccio bordello figah")),
+				args
+				.iter()
+				.rev()
+				.map(|term| Self::expand_term(term))
+				.reduce(|acc, linearised| Self::pushdown_mul(&linearised, &acc))
+				.unwrap_or_else(|| panic!("Not sure this can fail")),
 			RTerm::App { depth: _, typ: _, op, args } =>
 				term::app(*op, args.iter().map(|sub_term| Self::expand_term(sub_term)).collect()),
 			_ => panic!("{original_term} not possible in NIA"),
