@@ -2628,6 +2628,70 @@ impl RTerm {
 
         Ok(())
     }
+
+	// Assumes that the terms are from a multiplication, it tries to put `to_pushdown`
+	// as deep as possible into `to_modify`.
+	// `to_modify` must be expanded suing `expand_term` otherwise it will not reach the fixpoint
+	fn pushdown_mul(&self, to_pushdown: &Term) -> Term {
+		match self {
+			RTerm::Cst(_) | RTerm::Var(_, _) =>
+				term::mul(vec![to_pushdown.clone(), self.clone().to_hcons()]),
+			RTerm::App {depth: _, typ: _, op: Op::Ite, args} => {
+				let boolean_condition = args[0].expand_term();
+				let true_branch = args[1].pushdown_mul(to_pushdown);
+				let false_branch = args[2].pushdown_mul(to_pushdown);
+				term::ite(boolean_condition, true_branch, false_branch)
+			}
+			RTerm::App {depth: _, typ: _, op: Op::Add, args} =>
+				term::add(args.iter().map(|sub_term| sub_term.get().pushdown_mul(to_pushdown)).collect()),
+			RTerm::App {depth: _, typ: _, op: Op::Sub, args} =>
+				term::sub(args.iter().map(|sub_term| sub_term.pushdown_mul(to_pushdown)).collect()),
+			RTerm::App {depth: _, typ: _, op: Op::Mul, args: _} =>
+				term::mul(vec![to_pushdown.clone(), self.clone().to_hcons()]),
+			RTerm::App {depth: _, typ: _, op: Op::CMul, args: _} => {
+				let (cnst, term) = self.cmul_inspect().unwrap();
+				term::cmul(cnst.get().clone(), term.pushdown_mul(to_pushdown))
+			}
+			_ => panic!("I am not sure this is supposed to be possible, anyhow the trigger was pushing {to_pushdown} into {self}")
+		}
+	}
+
+    /// Expand a given term by applying the mul operator whenever possible
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use hoice::common::*;
+    /// let t = term::mul(
+    ///     vec![
+    ///        term::add( vec![term::int_var(0), term::int_var(1), term::int_var(2)] ),
+    ///        term::int_var(0)
+    ///     ]
+    /// );
+    /// let t1 = term::add(
+    ///     vec![
+    ///        term::mul( vec![term::int_var(0), term::int_var(0)] ),
+    ///        term::mul( vec![term::int_var(0), term::int_var(1)] ),
+    ///        term::mul( vec![term::int_var(0), term::int_var(2)] ),
+    ///     ]
+    /// );
+    /// assert_eq! { t.expand_term(), t1 }
+    /// ```
+	pub fn expand_term(&self) -> Term {
+		match self {
+			RTerm::Cst(_) | RTerm::Var(_, _) => self.clone().to_hcons(),
+			RTerm::App { depth: _, typ: _, op: Op::Mul, args } =>
+				args
+				.iter()
+				.rev()
+				.map(|term| term.expand_term())
+				.reduce(|accumulator, to_push| accumulator.pushdown_mul(&to_push))
+				.unwrap_or_else(|| panic!("Not sure this can fail")),
+			RTerm::App { depth: _, typ: _, op, args } =>
+				term::app(*op, args.iter().map(|sub_term| sub_term.expand_term()).collect()),
+			_ => panic!("{self} not possible in NIA"),
+		}
+	}
 }
 
 mylib::impl_fmt! {
