@@ -2692,6 +2692,102 @@ impl RTerm {
 			_ => panic!("{self} not possible in NIA"),
 		}
 	}
+
+	fn reduce_var_in_mul(
+		&self,
+		exponent: usize,
+		constraints: &mut Term,
+		known_simplifications: &mut HashMap<(RTerm,usize), VarIdx>,
+		greatest_varidx: &mut VarIdx,
+		new_vars_set: &mut VarSet,
+	) -> Term {
+		if exponent % 2 != 0 {
+			self.to_hcons()
+		}
+		else {
+			if let Some(simplification_idx) = known_simplifications.get(&(self.clone(), exponent)) {
+				// We already discovered the simplification for (term_{term_idx})^ocurrencies
+				term::int_var(*simplification_idx)
+			}else{
+				greatest_varidx.inc();
+				known_simplifications.insert((self.clone(), exponent), *greatest_varidx);
+				let new_var = term::int_var(*greatest_varidx);
+				new_vars_set.insert(*greatest_varidx);
+				let local_constr = term::or(
+						vec![
+							term::eq(term::int(1), new_var.clone()),
+							term::and(vec![
+								term::eq(term::int(0), self.to_hcons()),
+								term::eq(term::int(0), new_var.clone())
+							])
+						]
+				);
+				*constraints = term::and(
+					vec![constraints.clone(), local_constr]
+				);
+				new_var
+			}
+		}
+	}
+	
+	fn rec_linearise(
+		&self,
+		constraints: &mut Term,
+		greatest_varidx: &mut VarIdx,
+		known_simplification: &mut HashMap<(RTerm, usize), VarIdx>,
+		new_vars_set: &mut VarSet,
+	) -> Term {
+		match self {
+			RTerm::Var(_, _) | RTerm::Cst(_) => self.to_hcons(),
+			RTerm::App { depth: _, typ: _, op: Op::Mul, args } => {
+				let terms_and_exp = args.iter().fold(HashMap::new(), |mut acc, var| {
+					*acc.entry(var).or_insert(0) += 1;
+					acc
+				});
+				term::mul(
+					terms_and_exp.iter().map(
+						|(term, exponent)|
+ 						term.reduce_var_in_mul(
+							*exponent,
+							constraints,
+							known_simplification,
+							greatest_varidx,
+							new_vars_set,
+						)
+					).collect())
+			}
+			RTerm::App { depth: _, typ: _, op, args } =>
+				term::app(*op, args.iter()
+						  .map(
+							  |arg|
+							  arg.get().rec_linearise(constraints, greatest_varidx, known_simplification, new_vars_set)
+						  )
+						  .collect()),
+			_ => panic!(),
+		}
+	}
+
+	fn get_maximum_index(&self) -> VarIdx {
+		match self {
+			RTerm::Var(_, idx) => *idx,
+			RTerm::App { depth: _, typ: _, op: _, args } =>
+				args.iter().map(|term| term.get_maximum_index()).max().unwrap_or(VarIdx::zero()),
+			_ => VarIdx::zero(),
+		}
+	}
+
+	pub fn linearise(&self) -> (VarSet, Term) {
+		let mut constraints = term::tru();
+		let mut new_max_idx = self.get_maximum_index();
+		let mut new_vars_set = VarSet::new();
+		let linearised = self.rec_linearise(
+			&mut constraints,
+			&mut new_max_idx,
+			&mut HashMap::new(),
+			&mut new_vars_set
+		);
+		(new_vars_set, term::and(vec![linearised, constraints]))
+	}
 }
 
 mylib::impl_fmt! {
