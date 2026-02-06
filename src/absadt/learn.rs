@@ -106,7 +106,7 @@ impl TemplateInfo {
         }
     }
 
-	fn new_ite_approx(
+    fn new_ite_approx(
         encs: &BTreeMap<Typ, Encoder>,
         n_encs: usize,
         min: Option<i64>,
@@ -216,10 +216,10 @@ struct TemplateScheduler {
 }
 
 #[derive(Clone, Copy)]
-enum TemplateType {
+pub enum TemplateType {
     BoundStructuredLinear { min: i64, max: i64 },
-	BoundIte {min: i64, max: i64},
-	Ite,
+    BoundIte {min: i64, max: i64},
+    Ite,
     BoundLinear { min: i64, max: i64 },
     Linear,
 }
@@ -1157,23 +1157,23 @@ impl<'a> LearnCtx<'a> {
         Ok(Some(cex))
     }
 
-	fn define_linearisation_aliases(&mut self) -> Res<()> {
-		for var in self.linearised_constr_vars.iter() {
-			log_debug!("{}-{} var_{var} is a linearisation alias", file!(), line!());
+    fn define_linearisation_aliases(&mut self) -> Res<()> {
+        for var in self.linearised_constr_vars.iter() {
+            log_debug!("{}-{} var_{var} is a linearisation alias", file!(), line!());
             self.solver.declare_const(&format!("v_{}", var), typ::int().to_string())?;
         }
         Ok(())
-	}
+    }
 
 
-	/// Resets the constraints to an empty set and return the old value
-	fn reset_linear_constr_vars(&mut self) {
-		self.linearised_constr_vars = VarSet::new();
-	}
+    /// Resets the constraints to an empty set and return the old value
+    fn reset_linear_constr_vars(&mut self) {
+        self.linearised_constr_vars = VarSet::new();
+    }
 
-	fn remove_linear_vars_from_model<T>(&self, model: Vec<(VarIdx, T, Val)>) -> Vec<(VarIdx, T, Val)> {
-		model.into_iter().filter(|(idx, _, _)| !self.linearised_constr_vars.contains(idx)).collect()
-	}
+    fn remove_linear_vars_from_model<T>(&self, model: Vec<(VarIdx, T, Val)>) -> Vec<(VarIdx, T, Val)> {
+        model.into_iter().filter(|(idx, _, _)| !self.linearised_constr_vars.contains(idx)).collect()
+    }
 
     fn get_template_model(
         &mut self,
@@ -1189,8 +1189,8 @@ impl<'a> LearnCtx<'a> {
         self.solver.reset()?;
         self.solver.set_option(":timeout", "4294967295")?;
         template_info.define_parameters(&mut self.solver)?;
-		self.define_linearisation_aliases()?;
-		template_info.define_constraints(&mut self.solver)?;
+        self.define_linearisation_aliases()?;
+        template_info.define_constraints(&mut self.solver)?;
 
         writeln!(self.solver, "; Target term")?;
         writeln!(self.solver, "(assert {})", form)?;
@@ -1202,12 +1202,8 @@ impl<'a> LearnCtx<'a> {
         }
         let model = self.solver.get_model()?;
         let model = Parser.fix_model(model)?;
-		log_debug!("{}-{} linearised model", file!(), line!());
-		for item in model.iter() {
-			log_debug!("v_{} := {}", item.0, item.2);
-		}
-		let model = self.remove_linear_vars_from_model(model);
-		self.reset_linear_constr_vars();
+        let model = self.remove_linear_vars_from_model(model);
+        self.reset_linear_constr_vars();
         let cex = Model::of_model(&template_info.parameters, model, true)?;
         Ok(Some(cex))
     }
@@ -1242,16 +1238,15 @@ impl<'a> LearnCtx<'a> {
         }
         // solve the form
         let mut form = term::and(form);
-		if let Some((min, max)) = template_info.param_range() {
-			// TODO the .. && .. > threshhold is necessary since the linearisation is mutually exclusive for the blasting, for now.
-			if max - min + 1 <= THRESHOLD_BLASTING_MAX_RANGE && form.free_vars().len() > THRESHOLD_BLASTING {
-				log_debug!("{}-{} Linearising the instance to find new template values", file!(), line!());
-				log_debug!("{}-{} the original form is {form}", file!(), line!());
-				let (new_set_constr, linearised_form) = form.expand_term().linearise();
-				self.linearised_constr_vars = new_set_constr;
-				form = linearised_form;
-			}
-		}
+        if let Some((min, max)) = template_info.param_range() {
+            if max - min + 1 <= THRESHOLD_BLASTING_MAX_RANGE && form.free_vars().len() <= THRESHOLD_BLASTING {
+                log_debug!("{}-{} Linearising the instance to find new template values", file!(), line!());
+                log_debug!("{}-{} the original form is {form}", file!(), line!());
+                let (new_set_constr, linearised_form) = form.expand_term().linearise();
+                self.linearised_constr_vars = new_set_constr;
+                form = linearised_form;
+            }
+        }
 
         log_debug!("cex encoded with template");
         log_debug!("{}", form);

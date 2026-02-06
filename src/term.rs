@@ -2629,32 +2629,30 @@ impl RTerm {
         Ok(())
     }
 
-	// Assumes that the terms are from a multiplication, it tries to put `to_pushdown`
-	// as deep as possible into `to_modify`.
-	// `to_modify` must be expanded suing `expand_term` otherwise it will not reach the fixpoint
-	fn pushdown_mul(&self, to_pushdown: &Term) -> Term {
-		match self {
-			RTerm::Cst(_) | RTerm::Var(_, _) =>
-				term::mul(vec![to_pushdown.clone(), self.clone().to_hcons()]),
-			RTerm::App {depth: _, typ: _, op: Op::Ite, args} => {
-				let boolean_condition = args[0].expand_term();
-				let true_branch = args[1].pushdown_mul(to_pushdown);
-				let false_branch = args[2].pushdown_mul(to_pushdown);
-				term::ite(boolean_condition, true_branch, false_branch)
-			}
-			RTerm::App {depth: _, typ: _, op: Op::Add, args} =>
-				term::add(args.iter().map(|sub_term| sub_term.get().pushdown_mul(to_pushdown)).collect()),
-			RTerm::App {depth: _, typ: _, op: Op::Sub, args} =>
-				term::sub(args.iter().map(|sub_term| sub_term.pushdown_mul(to_pushdown)).collect()),
-			RTerm::App {depth: _, typ: _, op: Op::Mul, args: _} =>
-				term::mul(vec![to_pushdown.clone(), self.clone().to_hcons()]),
-			RTerm::App {depth: _, typ: _, op: Op::CMul, args: _} => {
-				let (cnst, term) = self.cmul_inspect().unwrap();
-				term::cmul(cnst.get().clone(), term.pushdown_mul(to_pushdown))
-			}
-			_ => panic!("I am not sure this is supposed to be possible, anyhow the trigger was pushing {to_pushdown} into {self}")
-		}
-	}
+    // Assumes that the terms are from a multiplication, it tries to put `to_pushdown`
+    // as deep as possible into `to_modify`.
+    // `to_modify` must be expanded suing `expand_term` otherwise it will not reach the fixpoint
+    fn pushdown_mul(&self, to_pushdown: &Term) -> Term {
+        match self {
+            RTerm::Cst(_) | RTerm::Var(_, _) =>
+                term::mul(vec![to_pushdown.clone(), self.clone().to_hcons()]),
+            RTerm::App {depth: _, typ: _, op: Op::Ite, args} => {
+                let boolean_condition = args[0].expand_term();
+                let true_branch = args[1].pushdown_mul(to_pushdown);
+                let false_branch = args[2].pushdown_mul(to_pushdown);
+                term::ite(boolean_condition, true_branch, false_branch)
+            }
+            RTerm::App {depth: _, typ: _, op, args} if *op == Op::Add || *op == Op::Sub =>
+                term::app(*op, args.iter().map(|sub_term| sub_term.get().pushdown_mul(to_pushdown)).collect()),
+            RTerm::App {depth: _, typ: _, op: Op::Mul, args: _} =>
+                term::mul(vec![to_pushdown.clone(), self.clone().to_hcons()]),
+            RTerm::App {depth: _, typ: _, op: Op::CMul, args: _} => {
+                let (cnst, term) = self.cmul_inspect().unwrap();
+                term.pushdown_mul(&term::cmul(cnst.get().clone(), to_pushdown.clone()))
+            }
+            _ => panic!("I am not sure this is supposed to be possible, anyhow the trigger was pushing {to_pushdown} into {self}")
+        }
+    }
 
     /// Expand a given term by applying the mul operator whenever possible
     ///
@@ -2677,117 +2675,120 @@ impl RTerm {
     /// );
     /// assert_eq! { t.expand_term(), t1 }
     /// ```
-	pub fn expand_term(&self) -> Term {
-		match self {
-			RTerm::Cst(_) | RTerm::Var(_, _) => self.clone().to_hcons(),
-			RTerm::App { depth: _, typ: _, op: Op::Mul, args } =>
-				args
-				.iter()
-				.rev()
-				.map(|term| term.expand_term())
-				.reduce(|accumulator, to_push| accumulator.pushdown_mul(&to_push))
-				.unwrap_or_else(|| panic!("Not sure this can fail")),
-			RTerm::App { depth: _, typ: _, op, args } =>
-				term::app(*op, args.iter().map(|sub_term| sub_term.expand_term()).collect()),
-			_ => panic!("{self} not possible in NIA"),
-		}
-	}
+    pub fn expand_term(&self) -> Term {
+        match self {
+            RTerm::Cst(_) | RTerm::Var(_, _) => self.clone().to_hcons(),
+            RTerm::App { depth: _, typ: _, op: Op::Mul, args } =>
+                args
+                .iter()
+                .rev()
+                .map(|term| term.expand_term())
+                .reduce(|accumulator, to_push| accumulator.pushdown_mul(&to_push))
+                .unwrap_or_else(|| panic!("Not sure this can fail")),
+            RTerm::App { depth: _, typ: _, op, args } =>
+                term::app(*op, args.iter().map(|sub_term| sub_term.expand_term()).collect()),
+            _ => panic!("{self} not possible in NIA"),
+        }
+    }
 
-	fn reduce_var_in_mul(
-		&self,
-		exponent: usize,
-		constraints: &mut Term,
-		known_simplifications: &mut HashMap<(RTerm,usize), VarIdx>,
-		greatest_varidx: &mut VarIdx,
-		new_vars_set: &mut VarSet,
-	) -> Term {
-		if exponent % 2 != 0 {
-			self.to_hcons()
-		}
-		else {
-			if let Some(simplification_idx) = known_simplifications.get(&(self.clone(), exponent)) {
-				// We already discovered the simplification for (term_{term_idx})^ocurrencies
-				term::int_var(*simplification_idx)
-			}else{
-				greatest_varidx.inc();
-				known_simplifications.insert((self.clone(), exponent), *greatest_varidx);
-				let new_var = term::int_var(*greatest_varidx);
-				new_vars_set.insert(*greatest_varidx);
-				let local_constr = term::or(
-						vec![
-							term::eq(term::int(1), new_var.clone()),
-							term::and(vec![
-								term::eq(term::int(0), self.to_hcons()),
-								term::eq(term::int(0), new_var.clone())
-							])
-						]
-				);
-				*constraints = term::and(
-					vec![constraints.clone(), local_constr]
-				);
-				new_var
-			}
-		}
-	}
-	
-	fn rec_linearise(
-		&self,
-		constraints: &mut Term,
-		greatest_varidx: &mut VarIdx,
-		known_simplification: &mut HashMap<(RTerm, usize), VarIdx>,
-		new_vars_set: &mut VarSet,
-	) -> Term {
-		match self {
-			RTerm::Var(_, _) | RTerm::Cst(_) => self.to_hcons(),
-			RTerm::App { depth: _, typ: _, op: Op::Mul, args } => {
-				let terms_and_exp = args.iter().fold(HashMap::new(), |mut acc, var| {
-					*acc.entry(var).or_insert(0) += 1;
-					acc
-				});
-				term::mul(
-					terms_and_exp.iter().map(
-						|(term, exponent)|
- 						term.reduce_var_in_mul(
-							*exponent,
-							constraints,
-							known_simplification,
-							greatest_varidx,
-							new_vars_set,
-						)
-					).collect())
-			}
-			RTerm::App { depth: _, typ: _, op, args } =>
-				term::app(*op, args.iter()
-						  .map(
-							  |arg|
-							  arg.get().rec_linearise(constraints, greatest_varidx, known_simplification, new_vars_set)
-						  )
-						  .collect()),
-			_ => panic!(),
-		}
-	}
+    fn reduce_var_in_mul(
+        &self,
+        exponent: usize,
+        constraints: &mut Term,
+        known_simplifications: &mut HashMap<(RTerm,usize), VarIdx>,
+        greatest_varidx: &mut VarIdx,
+        new_vars_set: &mut VarSet,
+    ) -> Term {
+        if exponent % 2 != 0 {
+            self.to_hcons()
+        }
+        else {
+            if let Some(simplification_idx) = known_simplifications.get(&(self.clone(), exponent)) {
+                // We already discovered the simplification for (term_{term_idx})^ocurrencies
+                term::int_var(*simplification_idx)
+            }else{
+                greatest_varidx.inc();
+                known_simplifications.insert((self.clone(), exponent), *greatest_varidx);
+                let new_var = term::int_var(*greatest_varidx);
+                new_vars_set.insert(*greatest_varidx);
+                // Here an `or` should suffice but the `xor` makes the mutual exclusion more explicit
+                let local_constr =
+                    term::not(term::eq(
+                        term::and(vec![
+                            term::eq(term::int(1), new_var.clone()),
+                            term::not(term::eq(term::int(0), self.to_hcons()))
+                        ]),
+                        term::and(vec![
+                            term::eq(term::int(0), self.to_hcons()),
+                            term::eq(term::int(0), new_var.clone())
+                        ])
+                    ));
+                *constraints = term::and(
+                    vec![constraints.clone(), local_constr]
+                );
+                new_var
+            }
+        }
+    }
 
-	fn get_maximum_index(&self) -> VarIdx {
-		match self {
-			RTerm::Var(_, idx) => *idx,
-			RTerm::App { depth: _, typ: _, op: _, args } =>
-				args.iter().map(|term| term.get_maximum_index()).max().unwrap_or(VarIdx::zero()),
-			_ => VarIdx::zero(),
-		}
-	}
+    fn rec_linearise(
+        &self,
+        constraints: &mut Term,
+        greatest_varidx: &mut VarIdx,
+        known_simplification: &mut HashMap<(RTerm, usize), VarIdx>,
+        new_vars_set: &mut VarSet,
+    ) -> Term {
+        match self {
+            RTerm::Var(_, _) | RTerm::Cst(_) => self.to_hcons(),
+            RTerm::App { depth: _, typ: _, op: Op::Mul, args } => {
+                let terms_and_exp = args.iter().fold(HashMap::new(), |mut acc, var| {
+                    *acc.entry(var).or_insert(0) += 1;
+                    acc
+                });
+                term::mul(
+                    terms_and_exp.iter().map(
+                        |(term, exponent)|
+                        term.reduce_var_in_mul(
+                            *exponent,
+                            constraints,
+                            known_simplification,
+                            greatest_varidx,
+                            new_vars_set,
+                        )
+                    ).collect())
+            }
+            RTerm::App { depth: _, typ: _, op, args } =>
+                term::app(*op, args.iter()
+                          .map(
+                              |arg|
+                              arg.get().rec_linearise(constraints, greatest_varidx, known_simplification, new_vars_set)
+                          )
+                          .collect()),
+            _ => panic!(),
+        }
+    }
 
-	pub fn linearise(&self) -> (VarSet, Term) {
-		let mut constraints = term::tru();
-		let mut new_max_idx = self.get_maximum_index();
-		let mut new_vars_set = VarSet::new();
-		let linearised = self.rec_linearise(
-			&mut constraints,
-			&mut new_max_idx,
-			&mut HashMap::new(),
-			&mut new_vars_set
-		);
-		(new_vars_set, term::and(vec![linearised, constraints]))
-	}
+    fn get_maximum_index(&self) -> VarIdx {
+        match self {
+            RTerm::Var(_, idx) => *idx,
+            RTerm::App { depth: _, typ: _, op: _, args } =>
+                args.iter().map(|term| term.get_maximum_index()).max().unwrap_or(VarIdx::zero()),
+            _ => VarIdx::zero(),
+        }
+    }
+
+    pub fn linearise(&self) -> (VarSet, Term) {
+                let mut constraints = term::tru();
+        let mut new_max_idx = self.get_maximum_index();
+        let mut new_vars_set = VarSet::new();
+        let linearised = self.rec_linearise(
+            &mut constraints,
+            &mut new_max_idx,
+            &mut HashMap::new(),
+            &mut new_vars_set
+        );
+        (new_vars_set, term::and(vec![linearised, constraints]))
+    }
 }
 
 mylib::impl_fmt! {
