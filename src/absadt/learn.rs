@@ -187,6 +187,21 @@ impl TemplateInfo {
         Some(asserts)
     }
 
+    fn get_n_encs(&self) -> usize {
+        let mut ret = 0;
+        for enc in self.encs.values() {
+            for approx in enc.approxs.values() {
+                ret = ret.max(
+                    match approx {
+                        Template::Ite(a) => a.approx.terms.len(),
+                        Template::Linear(a) => a.approx.terms.len(),
+                    }
+                )
+            }
+        }
+        ret
+    }
+
     fn param_range(&self) -> Option<(i64, i64)> {
         let mut overall_min = i64::MAX;
         let mut overall_max = i64::MIN;
@@ -1235,7 +1250,7 @@ impl<'a> LearnCtx<'a> {
         // solve the form
         let mut form = term::and(form);
         if let Some((min, max)) = template_info.param_range() {
-            if max - min + 1 <= THRESHOLD_BLASTING_MAX_RANGE && form.free_vars().len() > THRESHOLD_BLASTING {
+            if max - min + 1 <= THRESHOLD_BLASTING_MAX_RANGE && form.free_vars().len() > THRESHOLD_BLASTING && template_info.get_n_encs() == 1{
                 log_debug!("{}-{} Linearising the instance to find new template values", file!(), line!());
                 log_debug!("{}-{} the original form is {form}", file!(), line!());
                 let (new_set_constr, linearised_form) = form.expand_term().linearise();
