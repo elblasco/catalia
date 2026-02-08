@@ -1082,9 +1082,9 @@ fn solve_by_blasting(
         Ok(None)
     }
 
-	for var in vars.iter(){
-		log_debug!("{}-{} {var}", file!(), line!());
-	}
+    for var in vars.iter(){
+        log_debug!("{}-{} {var}", file!(), line!());
+    }
     search(form, &vars, 0, min, max, &mut model)
 }
 
@@ -1235,7 +1235,7 @@ impl<'a> LearnCtx<'a> {
         // solve the form
         let mut form = term::and(form);
         if let Some((min, max)) = template_info.param_range() {
-            if max - min + 1 <= THRESHOLD_BLASTING_MAX_RANGE && form.free_vars().len() <= THRESHOLD_BLASTING {
+            if max - min + 1 <= THRESHOLD_BLASTING_MAX_RANGE && form.free_vars().len() > THRESHOLD_BLASTING {
                 log_debug!("{}-{} Linearising the instance to find new template values", file!(), line!());
                 log_debug!("{}-{} the original form is {form}", file!(), line!());
                 let (new_set_constr, linearised_form) = form.expand_term().linearise();
