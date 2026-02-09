@@ -2,6 +2,7 @@ use super::chc::CEX;
 use super::enc::*;
 use crate::common::{smt::FullParser as Parser, Cex as Model, *};
 use crate::info::VarInfo;
+use crate::term::typ::RTyp;
 
 const CONSTRAINT_CHECK_TIMEOUT: usize = 1;
 const THRESHOLD_BLASTING: usize = 10;
@@ -974,7 +975,7 @@ fn test_solve_by_blasting_finds_model() {
     fvs.insert(x_idx);
     fvs.insert(y_idx);
 
-    let model = solve_by_blasting(&form, &template_info, &fvs, -1, 1)
+    let model = solve_by_blasting(&form, &template_info, &VarSet::new(), &fvs, -1, 1)
         .expect("blasting should succeed")
         .expect("formula should be satisfiable");
 
@@ -1011,7 +1012,7 @@ fn test_solve_by_blasting_unsat() {
     fvs.insert(x_idx);
     fvs.insert(y_idx);
 
-    let model = solve_by_blasting(&form, &template_info, &fvs, -1, 1)
+    let model = solve_by_blasting(&form, &template_info, &VarSet::new(), &fvs, -1, 1)
         .expect("blasting should not error");
     assert!(model.is_none());
 }
@@ -1033,7 +1034,7 @@ fn test_solve_by_blasting_prioritizes_zero() {
     let mut fvs = VarSet::new();
     fvs.insert(x_idx);
 
-    let model = solve_by_blasting(&form, &template_info, &fvs, -1, 1)
+    let model = solve_by_blasting(&form, &template_info, &VarSet::new(), &fvs, -1, 1)
         .expect("blasting should not error")
         .expect("formula should be satisfiable");
 
@@ -1044,6 +1045,7 @@ fn test_solve_by_blasting_prioritizes_zero() {
 fn solve_by_blasting(
     form: &term::Term,
     template_info: &TemplateInfo,
+    liner_var: &VarSet,
     fvs: &VarSet,
     min: i64,
     max: i64,
@@ -1054,11 +1056,15 @@ fn solve_by_blasting(
 
     let vars: Vec<_> = fvs.iter().copied().collect();
 
-    let mut model: VarMap<Val> = template_info
-        .parameters
-        .iter()
-        .map(|info| info.typ.default_val())
+    let mut model: VarMap<Val> = (0..=template_info
+        .parameters.len().max(form.get_maximum_index().into()))
+        .map(|_| RTyp::Int.default_val())
         .collect();
+
+    fn remove_linearisation_aliases(model: &Model, linear_alias: &VarSet) -> Model {
+        Model::from(model.iter().enumerate().filter(|(idx, _)| !linear_alias.contains( &VarIdx::new(*idx))).map(|(_, val)| val.clone()).collect::<Vec<_>>()
+        )
+    }
 
     fn search(
         form: &term::Term,
@@ -1096,11 +1102,11 @@ fn solve_by_blasting(
         model[var] = prev;
         Ok(None)
     }
-
-    for var in vars.iter(){
-        log_debug!("{}-{} {var}", file!(), line!());
+    let model = search(form, &vars, 0, min, max, &mut model)?;
+    if let Some(model) = model{
+        return Ok(Some(remove_linearisation_aliases(&model, liner_var)));
     }
-    search(form, &vars, 0, min, max, &mut model)
+    Ok(model)
 }
 
 impl<'a> LearnCtx<'a> {
@@ -1118,7 +1124,7 @@ impl<'a> LearnCtx<'a> {
             solver,
             models,
             profiler,
-			linearised_constr_vars: VarSet::new(),
+            linearised_constr_vars: VarSet::new(),
         }
     }
 
@@ -1194,7 +1200,7 @@ impl<'a> LearnCtx<'a> {
         let fvs = form.free_vars();
         if let Some((min, max)) = template_info.param_range() {
             if fvs.len() <= THRESHOLD_BLASTING && max - min + 1 <= THRESHOLD_BLASTING_MAX_RANGE {
-                return solve_by_blasting(form, template_info, &fvs, min, max)
+                return solve_by_blasting(form, template_info, &self.linearised_constr_vars, &fvs, min, max)
             }
         }
         self.solver.reset()?;
@@ -1250,9 +1256,8 @@ impl<'a> LearnCtx<'a> {
         // solve the form
         let mut form = term::and(form);
         if let Some((min, max)) = template_info.param_range() {
-            if max - min + 1 <= THRESHOLD_BLASTING_MAX_RANGE && form.free_vars().len() > THRESHOLD_BLASTING && template_info.get_n_encs() == 1{
-                log_debug!("{}-{} Linearising the instance to find new template values", file!(), line!());
-                log_debug!("{}-{} the original form is {form}", file!(), line!());
+            if max - min + 1 <= THRESHOLD_BLASTING_MAX_RANGE {
+                log_debug!("linearising the formula");
                 let (new_set_constr, linearised_form) = form.expand_term().linearise();
                 self.linearised_constr_vars = new_set_constr;
                 form = linearised_form;
