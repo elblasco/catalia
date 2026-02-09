@@ -7,6 +7,7 @@ use crate::term::typ::RTyp;
 const CONSTRAINT_CHECK_TIMEOUT: usize = 1;
 const THRESHOLD_BLASTING: usize = 10;
 const THRESHOLD_BLASTING_MAX_RANGE: i64 = 3;
+const MAX_DEPTH_FOR_LINERISATION: usize = 8;
 
 struct TemplateInfo {
     parameters: VarInfos,
@@ -1256,7 +1257,7 @@ impl<'a> LearnCtx<'a> {
         // solve the form
         let mut form = term::and(form);
         if let Some((min, max)) = template_info.param_range() {
-            if max - min + 1 <= THRESHOLD_BLASTING_MAX_RANGE {
+            if max - min + 1 <= THRESHOLD_BLASTING_MAX_RANGE && form.depth() <= MAX_DEPTH_FOR_LINERISATION {
                 log_debug!("linearising the formula");
                 let (new_set_constr, linearised_form) = form.expand_term().linearise();
                 self.linearised_constr_vars = new_set_constr;

@@ -2789,16 +2789,6 @@ impl RTerm {
         );
         (new_vars_set, term::and(vec![linearised, constraints]))
     }
-
-    fn get_max_depth(&self) -> usize {
-        match self {
-            RTerm::App { depth, typ, op, args } => {
-                args.iter().map(|arg| arg.get_max_depth()).max().unwrap_or_default() + depth
-            }
-            RTerm::Var(_, _) => 0,
-            _ => 0,
-        }
-    }
 }
 
 mylib::impl_fmt! {
