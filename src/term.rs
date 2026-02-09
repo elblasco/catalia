@@ -2768,7 +2768,7 @@ impl RTerm {
         }
     }
 
-    fn get_maximum_index(&self) -> VarIdx {
+    pub fn get_maximum_index(&self) -> VarIdx {
         match self {
             RTerm::Var(_, idx) => *idx,
             RTerm::App { depth: _, typ: _, op: _, args } =>
@@ -2788,6 +2788,16 @@ impl RTerm {
             &mut new_vars_set
         );
         (new_vars_set, term::and(vec![linearised, constraints]))
+    }
+
+    fn get_max_depth(&self) -> usize {
+        match self {
+            RTerm::App { depth, typ, op, args } => {
+                args.iter().map(|arg| arg.get_max_depth()).max().unwrap_or_default() + depth
+            }
+            RTerm::Var(_, _) => 0,
+            _ => 0,
+        }
     }
 }
 
