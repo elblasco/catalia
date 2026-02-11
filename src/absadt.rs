@@ -193,16 +193,20 @@ impl<'original> AbsConf<'original> {
     /// 3. if no, updates the encoders and returns false
     fn handle_cex(&mut self, cex: chc::CEX, return_timeout: bool) -> Res<bool> {
         log_debug!("cex: {}", cex);
+        current_time!("check smt cex");
         if let Some(b) = cex.check_sat_opt(&mut self.solver)? {
             // unsat
             if b {
+                current_time!("check smt cex");
                 return Ok(true);
             }
         } else {
             if return_timeout {
+                current_time!("check smt cex");
                 bail!("timeout");
             }
         }
+        current_time!("check smt cex");
         self.cexs.push(cex);
         let cex = self.get_combined_cex();
 

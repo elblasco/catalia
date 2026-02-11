@@ -1192,6 +1192,7 @@ impl<'a> AbsInstance<'a> {
     /// Returns () when it's sat, and a counterexample when it's unsat
     pub fn check_sat(&self) -> Res<either::Either<(), CallTree>> {
         // since eld seems better, we first try eld with timeout
+        current_time!("check-sat");
         let (b, eldarica_error) = super::chc_solver::portfolio(self)?
             .either(
                 |_| (true, None),
@@ -1209,6 +1210,8 @@ impl<'a> AbsInstance<'a> {
             log_debug!("Using Spacer for counterexample generation");
             super::chc_solver::run_spacer(self)?
         };
+
+        current_time!("check-sat");
 
         match res {
             either::Left(_) => Ok(either::Left(())),

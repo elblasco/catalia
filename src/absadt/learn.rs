@@ -1107,6 +1107,7 @@ fn solve_by_blasting(
     if let Some(model) = model{
         return Ok(Some(remove_linearisation_aliases(&model, liner_var)));
     }
+    current_time!("check smt NIA");
     Ok(model)
 }
 
@@ -1165,11 +1166,14 @@ impl<'a> LearnCtx<'a> {
         } else {
             self.solver.set_option(":timeout", "4294967295")?;
         }
+        current_time!("check smt timeout");
         let b = self.solver.check_sat()?;
         if !b {
+            current_time!("check smt timeout");
             return Ok(None);
         }
         let model = self.solver.get_model()?;
+        current_time!("check smt timeout");
         let model = Parser.fix_model(model)?;
         let cex = Model::of_model(&self.cex.vars, model, true)?;
         Ok(Some(cex))
@@ -1199,6 +1203,7 @@ impl<'a> LearnCtx<'a> {
         template_info: &TemplateInfo,
     ) -> Res<Option<Model>> {
         let fvs = form.free_vars();
+        current_time!("check smt NIA");
         if let Some((min, max)) = template_info.param_range() {
             if fvs.len() <= THRESHOLD_BLASTING && max - min + 1 <= THRESHOLD_BLASTING_MAX_RANGE {
                 return solve_by_blasting(form, template_info, &self.linearised_constr_vars, &fvs, min, max)
@@ -1216,9 +1221,12 @@ impl<'a> LearnCtx<'a> {
         writeln!(self.solver)?;
         let b = self.solver.check_sat()?;
         if !b {
+            current_time!("check smt NIA");
+            self.reset_linear_constr_vars();
             return Ok(None);
         }
         let model = self.solver.get_model()?;
+        current_time!("check smt NIA");
         let model = Parser.fix_model(model)?;
         let model = self.remove_linear_vars_from_model(model);
         self.reset_linear_constr_vars();
