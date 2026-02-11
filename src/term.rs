@@ -2761,7 +2761,12 @@ impl RTerm {
                 term::app(*op, args.iter()
                           .map(
                               |arg|
-                              arg.get().rec_linearise(constraints, greatest_varidx, known_simplification, new_vars_set)
+                              arg.get().rec_linearise(
+                                  constraints,
+                                  greatest_varidx,
+                                  known_simplification,
+                                  new_vars_set
+                              )
                           )
                           .collect()),
             _ => panic!(),

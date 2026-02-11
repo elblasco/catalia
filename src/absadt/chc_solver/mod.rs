@@ -8,7 +8,7 @@ pub use eld::{run_eldarica, run_eldarica_cex};
 pub use hoice::run_hoice;
 pub use spacer::run_spacer;
 
-const CHECK_CHC_TIMEOUT: usize = 60;
+const CHECK_CHC_TIMEOUT: usize = 30;
 
 pub trait Instance {
     fn dump_as_smt2<File, Option>(
