@@ -1175,6 +1175,8 @@ pub struct Config {
     pub teacher: TeacherConf,
     /// Optional file that describes a catamorphism to apply
     catamorphism_file: Option<String>,
+    /// Enable linearisation whenever possible
+    pub linearise: bool,
 }
 impl ColorExt for Config {
     fn styles(&self) -> &Styles {
@@ -1318,6 +1320,7 @@ impl Config {
         let catamorphism_file = matches
             .value_of("catamorphism input file")
             .map(|s| s.to_string());
+        let linearise = bool_of_matches(&matches, "linearisation");
 
         let instance = InstanceConf::new(&matches);
         let preproc = PreprocConf::new(&matches);
@@ -1348,6 +1351,7 @@ impl Config {
             ice,
             teacher,
             catamorphism_file,
+            linearise
         }
     }
 
@@ -1516,6 +1520,16 @@ impl Config {
                 Arg::new("use_eldarica_cex")
                     .long("--eldarica-cex")
                     .help("use Eldarica instead of Spacer for counterexample generation")
+                    .validator(bool_validator)
+                    .value_name(bool_format)
+                    .default_value("off")
+                    .takes_value(true)
+                    .number_of_values(1)
+                    .display_order(order()),
+            ).arg(
+                Arg::new("linearisation")
+                    .long("--linearisation")
+                    .help("Enable formulae linearisation wheever possible")
                     .validator(bool_validator)
                     .value_name(bool_format)
                     .default_value("off")
