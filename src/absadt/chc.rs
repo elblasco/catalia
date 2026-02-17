@@ -1199,6 +1199,7 @@ impl<'a> AbsInstance<'a> {
                 |(_, eld_err)| (false, eld_err)
             );
         if b {
+            current_time!("check-sat");
             return Ok(either::Left(()));
         }
 

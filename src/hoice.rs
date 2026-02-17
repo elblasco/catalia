@@ -53,6 +53,7 @@ use crate::instance::Instance;
 
 /// Parses command-line arguments and works.
 pub fn work() -> Res<()> {
+    current_time!("START");
     // Reading from file?
     if let Some(file_path) = conf.in_file() {
         use std::fs::OpenOptions;

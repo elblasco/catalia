@@ -1060,10 +1060,10 @@ fn solve_by_blasting(
         Ok(None)
     }
     let model = search(form, &vars, 0, min, max, &mut model)?;
+    current_time!("check smt IA");
     if let Some(model) = model{
         return Ok(Some(remove_linearisation_aliases(&model, liner_var)));
     }
-    current_time!("check smt NIA");
     Ok(model)
 }
 
@@ -1191,18 +1191,19 @@ impl<'a> LearnCtx<'a> {
         writeln!(self.solver)?;
         let b = self.solver.check_sat()?;
         if !b {
-            current_time!("check smt NIA");
+            current_time!("check smt IA");
             self.reset_linear_constr_vars();
             return Ok(None);
         }
         let model = self.solver.get_model()?;
-        current_time!("check smt NIA");
+        current_time!("check smt IA");
         let model = Parser.fix_model(model)?;
         let model = self.remove_linear_vars_from_model(model);
         self.reset_linear_constr_vars();
         let cex = Model::of_model(&template_info.parameters, model, true)?;
         Ok(Some(cex))
     }
+
     fn get_instantiation(
         &mut self,
         template_info: TemplateInfo,

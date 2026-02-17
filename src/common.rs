@@ -858,7 +858,7 @@ macro_rules! current_time {
     ($msg:expr) => {
         match std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH) {
             Ok(n) => {
-                log!("{} {}", $msg, n.as_secs_f64());
+                log!("{} {}", $msg, n.as_millis());
             }
             Err(e) => {
                 panic!("Time error: {e:?}");
