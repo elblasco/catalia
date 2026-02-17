@@ -7,7 +7,8 @@ use crate::term::typ::RTyp;
 const CONSTRAINT_CHECK_TIMEOUT: usize = 1;
 const THRESHOLD_BLASTING: usize = 10;
 const THRESHOLD_BLASTING_MAX_RANGE: i64 = 3;
-const MAX_DEPTH_FOR_LINERISATION: usize = 8;
+//const MAX_DEPTH_FOR_LINERISATION: usize = 13;
+const MAX_LENGTH_FOR_LINERISATION: usize = 500;
 
 struct TemplateInfo {
     parameters: VarInfos,
@@ -704,51 +705,6 @@ impl IteApprox {
 			}
 		}
 		
-		// let n_arg = self.approx.args.len();
-		// let mut asserts = Vec::new();
-		// for coefs in self.coef.iter() {
-		//	for coef in coefs.iter() {
-		//		let multiplier = if (**coef - n_arg) % Self::ITE_PART == 0 {2} else {1};
-		//		if let Some(min) = self.min {
-		//			let t = term::le(term::int(multiplier * min), term::var(*coef, typ::int()));
-		//			asserts.push(t);
-		//		}
-
-		//		if let Some(max) = self.max {
-		//			let t = term::le(term::var(*coef, typ::int()), term::int(multiplier * max));
-		//			asserts.push(t);
-		//		}
-		//	}
-		// }
-
-		// for constants in self.cnst.iter() {
-		//	for (idx,cnst) in constants.iter().enumerate(){
-		//		let multiplier = if idx == 0 {2} else {1};
-		//		if let Some(min) = self.min {
-		//			let t = term::le(term::int(multiplier * min), term::var(*cnst, typ::int()));
-		//			asserts.push(t);
-		//		}
-
-		//		if let Some(max) = self.max {
-		//			let t = term::le(term::var(*cnst, typ::int()), term::int(multiplier * max));
-		//			asserts.push(t);
-		//		}
-		//	}
-		// }
-
-		// for term in self.approx.terms.iter() {
-		// 	match term.get() {
-		// 		RTerm::App { depth, typ, op: Op::Ite, args } => {
-		// 			asserts.push(
-		// 				term::not(term::eq(
-		// 					args[1].clone(), args[2].clone()
-		// 				))
-		// 			);
-		// 		},
-		// 		_ => ()
-		// 	}
-		// }
-		
 		Some(term::and(asserts))
 	}
 
@@ -1181,7 +1137,6 @@ impl<'a> LearnCtx<'a> {
 
     fn define_linearisation_aliases(&mut self) -> Res<()> {
         for var in self.linearised_constr_vars.iter() {
-            log_debug!("{}-{} var_{var} is a linearisation alias", file!(), line!());
             self.solver.declare_const(&format!("v_{}", var), typ::int().to_string())?;
         }
         Ok(())
@@ -1197,21 +1152,36 @@ impl<'a> LearnCtx<'a> {
         model.into_iter().filter(|(idx, _, _)| !self.linearised_constr_vars.contains(idx)).collect()
     }
 
+    fn can_be_linearised(template_info: &TemplateInfo, formula: &Term) -> bool {
+        if let Some((min, max)) = template_info.param_range() {
+            conf.linearise &&
+                max - min + 1 <= THRESHOLD_BLASTING_MAX_RANGE &&
+                formula.get_length() <= MAX_LENGTH_FOR_LINERISATION
+        }
+        else {
+            false
+        }
+    }
+
     fn get_template_model(
         &mut self,
         form: &term::Term,
         template_info: &TemplateInfo,
     ) -> Res<Option<Model>> {
         let fvs = form.free_vars();
-        current_time!("check smt NIA");
+        current_time!("check smt IA");
         if let Some((min, max)) = template_info.param_range() {
             if fvs.len() <= THRESHOLD_BLASTING && max - min + 1 <= THRESHOLD_BLASTING_MAX_RANGE {
                 return solve_by_blasting(form, template_info, &self.linearised_constr_vars, &fvs, min, max)
             }
         }
         self.solver.reset()?;
+        if Self::can_be_linearised(&template_info, &form) {
+            writeln!(self.solver, "(set-logic QF_LIA)")?;
+        }
         self.solver.set_option(":timeout", "4294967295")?;
         template_info.define_parameters(&mut self.solver)?;
+        writeln!(self.solver, "; Linearisation aliases")?;
         self.define_linearisation_aliases()?;
         template_info.define_constraints(&mut self.solver)?;
 
@@ -1264,13 +1234,15 @@ impl<'a> LearnCtx<'a> {
         }
         // solve the form
         let mut form = term::and(form);
-        if let Some((min, max)) = template_info.param_range() {
-            if max - min + 1 <= THRESHOLD_BLASTING_MAX_RANGE && form.depth() <= MAX_DEPTH_FOR_LINERISATION {
-                log_debug!("linearising the formula");
-                let (new_set_constr, linearised_form) = form.expand_term().linearise();
-                self.linearised_constr_vars = new_set_constr;
-                form = linearised_form;
-            }
+
+        if Self::can_be_linearised(&template_info, &form){
+            let mut max_idx: VarIdx = VarIdx::from(template_info.parameters.len() - 1);
+            log_debug!("{}-{} the term lenght is {}", file!(), line!(), form.get_length());
+            current_time!("linearisation");
+            let (new_vars, linearised_form) = form.expand_term().linearise(&mut max_idx);
+            current_time!("linearisation");
+            self.linearised_constr_vars = new_vars;
+            form = linearised_form;
         }
 
         log_debug!("cex encoded with template");
@@ -1281,6 +1253,7 @@ impl<'a> LearnCtx<'a> {
             let encs = template_info.instantiate(&m);
             encs
         });
+        self.reset_linear_constr_vars();
         Ok(r)
     }
 

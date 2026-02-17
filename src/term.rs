@@ -2691,11 +2691,11 @@ impl RTerm {
         }
     }
 
-    fn reduce_var_in_mul(
+    fn reduce_var_with_exponent(
         &self,
         exponent: usize,
         constraints: &mut Term,
-        known_simplifications: &mut HashMap<(RTerm,usize), VarIdx>,
+        known_simplifications: &mut HashMap<(Self,usize), VarIdx>,
         greatest_varidx: &mut VarIdx,
         new_vars_set: &mut VarSet,
     ) -> Term {
@@ -2731,11 +2731,73 @@ impl RTerm {
         }
     }
 
+    fn linearisation_monomial(
+        terms: &mut BTreeSet<Term>,
+        greatest_varidx: &mut VarIdx,
+        constraints: &mut Term,
+        known_simplifications: &mut HashMap<BTreeSet<Term>, VarIdx>,
+        new_vars_set: &mut VarSet,
+    ) -> Term {
+        if terms.len() == 1{
+            terms.iter().next().unwrap().clone()
+        }
+        else{
+            if let Some(simplified) = known_simplifications.get(terms) {
+                term::int_var(*simplified)
+            } else{
+                greatest_varidx.inc();
+                let a = terms.pop_first().unwrap();
+                let b = terms.pop_first().unwrap();
+                let c = term::int_var(*greatest_varidx);
+                let new_constr_0_case = term::and(vec![
+                    term::eq(c.clone(), term::int_zero()),
+                    term::or(vec![
+                        term::eq(a.clone(), term::int_zero()),
+                        term::eq(b.clone(), term::int_zero()),
+                    ])
+                ]);
+                let new_constr_eq_case = term::and(vec![
+                    term::eq(c.clone(), term::int_one()),
+                    term::eq(a.clone(), b.clone()),
+                    term::not(term::eq(b.clone(), term::int_zero())),
+                ]);
+                let new_constr_minus_a_case = term::and(vec![
+                    term::eq(a.clone(), term::int(-1)),
+                    term::eq(c.clone(), term::cmul(-1, b.clone()))
+                ]);
+                let new_constr_minus_b_case = term::and(vec![
+                    term::eq(b.clone(), term::int(-1)),
+                    term::eq(c.clone(), term::cmul(-1, a.clone()))
+                ]);
+                *constraints = term::and(vec![
+                    constraints.clone(),
+                    term::or(vec![
+                        new_constr_0_case,
+                        new_constr_eq_case,
+                        new_constr_minus_a_case,
+                        new_constr_minus_b_case,
+                    ])
+                ]);
+                new_vars_set.insert(*greatest_varidx);
+                known_simplifications.insert(BTreeSet::from([a, b]), *greatest_varidx);
+                terms.insert(c.clone());
+                Self::linearisation_monomial(
+                    terms,
+                    greatest_varidx,
+                    constraints,
+                    known_simplifications,
+                    new_vars_set
+                )
+            }
+        }
+    }
+
     fn rec_linearise(
         &self,
         constraints: &mut Term,
         greatest_varidx: &mut VarIdx,
-        known_simplification: &mut HashMap<(RTerm, usize), VarIdx>,
+        known_var_power_simplifications: &mut HashMap<(RTerm, usize), VarIdx>,
+        known_monomial_simplifications: &mut HashMap<BTreeSet<Term>, VarIdx>,
         new_vars_set: &mut VarSet,
     ) -> Term {
         match self {
@@ -2745,50 +2807,76 @@ impl RTerm {
                     *acc.entry(var).or_insert(0) += 1;
                     acc
                 });
-                term::mul(
-                    terms_and_exp.iter().map(
-                        |(term, exponent)|
-                        term.reduce_var_in_mul(
-                            *exponent,
-                            constraints,
-                            known_simplification,
-                            greatest_varidx,
-                            new_vars_set,
-                        )
-                    ).collect())
+                //We will obtain only degree one vars
+                let mut only_degree_one_vars = terms_and_exp.iter().map(
+                    |(term, exp)|
+                    term.reduce_var_with_exponent(
+                        *exp,
+                        constraints,
+                        known_var_power_simplifications,
+                        greatest_varidx,
+                        new_vars_set,
+                    )
+                ).collect::<BTreeSet<Term>>();
+                Self::linearisation_monomial(
+                    &mut only_degree_one_vars,
+                    greatest_varidx,
+                    constraints,
+                    known_monomial_simplifications,
+                    new_vars_set,
+                )
             }
             RTerm::App { depth: _, typ: _, op, args } =>
-                term::app(*op, args.iter()
-                          .map(
-                              |arg|
-                              arg.get().rec_linearise(
-                                  constraints,
-                                  greatest_varidx,
-                                  known_simplification,
-                                  new_vars_set
-                              )
-                          )
-                          .collect()),
+                term::app(
+                    *op,
+                    args.iter()
+                        .map(
+                            |arg|
+                            arg.get().rec_linearise(
+                                constraints,
+                                greatest_varidx,
+                                known_var_power_simplifications,
+                                known_monomial_simplifications,
+                                new_vars_set
+                            )
+                        )
+                        .collect()
+                ),
             _ => panic!(),
+        }
+    }
+    pub fn get_length(&self) -> usize {
+        match self {
+            RTerm::Var(_, _) | RTerm::Cst(_) => 1,
+            RTerm::App { depth: _, typ: _, op: _, args } |
+            RTerm::DTypNew { depth: _, typ: _, name: _, args } |
+            RTerm::Fun { depth: _, typ: _, name: _, args } =>
+                args.iter().map(|term| term.get_length()).sum::<usize>(),
+            RTerm::CArray { depth: _, typ: _, term } |
+            RTerm::DTypSlc { depth: _, typ: _, name: _, term } |
+            RTerm::DTypTst { depth: _, typ: _, name: _, term } =>
+                term.get_length() + 1,
         }
     }
 
     pub fn get_maximum_index(&self) -> VarIdx {
         match self {
             RTerm::Var(_, idx) => *idx,
-            RTerm::App { depth: _, typ: _, op: _, args } =>
-                args.iter().map(|term| term.get_maximum_index()).max().unwrap_or(VarIdx::zero()),
+            RTerm::App { depth: _, typ: _, op: _, args } =>{
+                args.iter().map(|term| term.get_maximum_index()).max().unwrap_or(VarIdx::zero())
+            },
             _ => VarIdx::zero(),
         }
     }
 
-    pub fn linearise(&self) -> (VarSet, Term) {
-                let mut constraints = term::tru();
-        let mut new_max_idx = self.get_maximum_index();
+    pub fn linearise(&self, max_idx: &mut VarIdx) -> (VarSet, Term) {
+        log_debug!("{}-{} before linearisation {self}", file!(), line!());
+        let mut constraints = term::tru();
         let mut new_vars_set = VarSet::new();
         let linearised = self.rec_linearise(
             &mut constraints,
-            &mut new_max_idx,
+            max_idx,
+            &mut HashMap::new(),
             &mut HashMap::new(),
             &mut new_vars_set
         );
