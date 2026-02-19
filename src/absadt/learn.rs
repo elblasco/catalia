@@ -1125,7 +1125,12 @@ impl<'a> LearnCtx<'a> {
             self.solver.set_option(":timeout", "4294967295")?;
         }
         current_time!("check smt timeout");
-        let b = self.solver.check_sat()?;
+        let b = self.solver.check_sat().or_else(
+            |err| {
+                current_time!("check smt timeout");
+                Err(err)
+            }
+        )?;
         if !b {
             current_time!("check smt timeout");
             return Ok(None);
