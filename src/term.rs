@@ -2859,23 +2859,13 @@ impl RTerm {
         }
     }
 
-    pub fn get_maximum_index(&self) -> VarIdx {
-        match self {
-            RTerm::Var(_, idx) => *idx,
-            RTerm::App { depth: _, typ: _, op: _, args } =>{
-                args.iter().map(|term| term.get_maximum_index()).max().unwrap_or(VarIdx::zero())
-            },
-            _ => VarIdx::zero(),
-        }
-    }
-
-    pub fn linearise(&self, max_idx: &mut VarIdx) -> (VarSet, Term) {
+    pub fn linearise(&self) -> (VarSet, Term) {
         log_debug!("{}-{} before linearisation {self}", file!(), line!());
         let mut constraints = term::tru();
         let mut new_vars_set = VarSet::new();
         let linearised = self.rec_linearise(
             &mut constraints,
-            max_idx,
+            &mut self.highest_var().unwrap_or(VarIdx::zero()),
             &mut HashMap::new(),
             &mut HashMap::new(),
             &mut new_vars_set

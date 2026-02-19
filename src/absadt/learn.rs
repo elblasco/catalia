@@ -8,7 +8,7 @@ const CONSTRAINT_CHECK_TIMEOUT: usize = 1;
 const THRESHOLD_BLASTING: usize = 10;
 const THRESHOLD_BLASTING_MAX_RANGE: i64 = 3;
 //const MAX_DEPTH_FOR_LINERISATION: usize = 13;
-const MAX_LENGTH_FOR_LINERISATION: usize = 500;
+const MAX_LENGTH_FOR_LINERISATION: usize = 600;
 
 struct TemplateInfo {
     parameters: VarInfos,
@@ -1013,8 +1013,10 @@ fn solve_by_blasting(
 
     let vars: Vec<_> = fvs.iter().copied().collect();
 
-    let mut model: VarMap<Val> = (0..=template_info
-        .parameters.len().max(form.get_maximum_index().into()))
+    let mut model: VarMap<Val> =
+        (0..=
+         template_info.parameters.len().max(*form.highest_var().unwrap_or(VarIdx::zero()))
+        )
         .map(|_| RTyp::Int.default_val())
         .collect();
 
@@ -1237,10 +1239,9 @@ impl<'a> LearnCtx<'a> {
         let mut form = term::and(form);
 
         if Self::can_be_linearised(&template_info, &form){
-            let mut max_idx: VarIdx = VarIdx::from(template_info.parameters.len() - 1);
             log_debug!("{}-{} the term lenght is {}", file!(), line!(), form.get_length());
             current_time!("linearisation");
-            let (new_vars, linearised_form) = form.expand_term().linearise(&mut max_idx);
+            let (new_vars, linearised_form) = form.expand_term().linearise();
             current_time!("linearisation");
             self.linearised_constr_vars = new_vars;
             form = linearised_form;
