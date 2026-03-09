@@ -1013,15 +1013,28 @@ fn solve_by_blasting(
 
     let vars: Vec<_> = fvs.iter().copied().collect();
 
+    let model_upper_idx = template_info
+        .parameters
+        .iter()
+        .map(|var| *var.idx)
+        .max()
+        .unwrap_or(0)
+        .max(*form.highest_var().unwrap_or(VarIdx::zero()));
     let mut model: VarMap<Val> =
-        (0..=
-         template_info.parameters.len().max(*form.highest_var().unwrap_or(VarIdx::zero()))
-        )
+        (0..=model_upper_idx)
         .map(|_| RTyp::Int.default_val())
         .collect();
 
     fn remove_linearisation_aliases(model: &Model, linear_alias: &VarSet) -> Model {
-        Model::from(model.iter().enumerate().filter(|(idx, _)| !linear_alias.contains( &VarIdx::new(*idx))).map(|(_, val)| val.clone()).collect::<Vec<_>>()
+        Model::from(
+            model
+                .iter()
+                .enumerate()
+                .filter(|(idx, _)|
+                    !linear_alias.contains( &VarIdx::new(*idx))
+                )
+                .map(|(_, val)| val.clone())
+                .collect::<Vec<_>>()
         )
     }
 
@@ -1063,8 +1076,10 @@ fn solve_by_blasting(
     }
     let model = search(form, &vars, 0, min, max, &mut model)?;
     current_time!("check smt IA");
-    if let Some(model) = model{
-        return Ok(Some(remove_linearisation_aliases(&model, liner_var)));
+    if let Some(model) = model {
+        let ret = remove_linearisation_aliases(&model, liner_var);
+        assert_eq!(ret.len(), template_info.parameters.len());
+        return Ok(Some(ret));
     }
     Ok(model)
 }
