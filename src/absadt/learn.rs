@@ -1244,9 +1244,14 @@ impl<'a> LearnCtx<'a> {
         let mut form = term::and(form);
 
         if Self::can_be_linearised(&template_info, &form){
-            log_debug!("{}-{} the term lenght is {}", file!(), line!(), form.get_length());
             current_time!("linearisation");
-            let (new_vars, linearised_form) = form.expand_term().linearise();
+            let (new_vars, linearised_form) = form.expand_term(
+                template_info.parameters
+                    .iter()
+                    .map(|var| var.idx)
+                    .max()
+                    .unwrap_or(VarIdx::zero())
+            )?;
             current_time!("linearisation");
             self.linearised_constr_vars = new_vars;
             form = linearised_form;
