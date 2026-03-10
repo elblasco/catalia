@@ -41,26 +41,29 @@ pub enum Category {
 /// ```text
 /// (declare-datatypes
 ///  ( (Color 0) )
-///  ( ( (Red) (Green) (Blue) (Yellow) ) ))
+///  ( ( (Red (red Int)) (Green (green Int)) (Blue) (Yellow) ) ))
 /// ```
 /// Is statically simplified to:
 /// ```text
-/// Red    -> 1
-/// Green  -> 2
-/// Blue   -> 3
-/// Yellow -> 4
+/// Red(red: Int)     -> (1, red)
+/// Green(green: Int) -> (2, green)
+/// Blue              -> (3, 0)
+/// Yellow            -> (4, 0)
 /// ```
 /// ## Dynamically simplifiable
 /// ```text
 /// (declare-datatypes
+///  ( (List 0) )
+///  ( ( Nil (Cons (head Int) (tail List)) ) ))
+/// (declare-datatypes
 ///  ( (Tuple 0) )
-///  ( ( (TupColor  (first Color) (second Color)) ) ))
+///  ( ( (TupColor (first List) (second Color)) ) ))
 /// ```
-/// Is statically simplified to:
+/// Is dynamically simplified to:
 /// ```text
-/// TupColor (first, second) -> (first, second)
+/// TupColor (first, second_1, second_2) -> (first, second_1, second_2)
 /// ```
-/// If the approximation degree for `Color` was 2 then, the simplification for
+/// If the approximation degree for `List` was 2 then, the simplification for
 /// `Tuple` would have been:
 /// ```text
 /// TupColor (first_1, first_2, second_1, second_2) -> (first_1, first_2, second_1, second_2)
@@ -198,12 +201,13 @@ impl ADTDependencyGraph {
                 for (arg_name, arg_typ) in constructor_args.iter() {
                     if let Ok(argument_concrete_typ) = arg_typ.to_type(Some(parameter)) {
                         for idx in 0..*self.initial_approx_degrees.get(&argument_concrete_typ).unwrap_or(&1) {
-                            new_signature.push(VarInfo {
-                                name: format!("{arg_name}_{idx}",),
-                                typ: typ::int(),
-                                idx: new_signature.next_index(),
-                                active: true,
-                            });
+                            new_signature.push(
+                                VarInfo::new(
+                                    format!("{arg_name}_{idx}"),
+                                    typ::int(),
+                                    new_signature.next_index()
+                                )
+                            );
                         }
                     }
                     else{
@@ -223,16 +227,10 @@ impl ADTDependencyGraph {
         for (typ, approx_deg) in simplifiable.iter() {
             let enc = encs.get_mut(&typ).unwrap();
             enc.n_params = *approx_deg;
-
-            if matches!(category_to_flatten, Category::Dynamic) {
-                enc.simplification = SimplificationKind::DynamicApprox;
-            }
-            else if matches!(category_to_flatten, Category::Static) {
-                enc.simplification = SimplificationKind::StaticApprox;
-            }
-            else {
-                enc.simplification = SimplificationKind::None;
-            }
+            enc.simplification = match category_to_flatten {
+                Category::Dynamic => SimplificationKind::DynamicApprox,
+                Category::Static => SimplificationKind::StaticApprox,
+            };
             let n_constr = enc.approxs.keys().len();
             let approximations = &mut enc.approxs;
             for (idx, (_, approx)) in approximations.iter_mut().enumerate() {
