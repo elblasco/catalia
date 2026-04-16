@@ -867,13 +867,16 @@ impl SimplifiedApprox {
         variables: &mut VarInfos,
         old_approx: &Enc<Approx>,
         kind: SimplificationKind,
-        approx: usize,
+        approx_degree: usize,
     ) -> Res<()> {
+        let mut cache = BTreeMap::new();
+        &old_approx.typ.compute_approximation_degree(&mut cache, approx_degree)?;
+        let expected_len = *cache.get(&old_approx.typ).unwrap();
         let constructors = &old_approx.typ.dtyp_inspect().unwrap().0.news;
         let mut dyn_constr_discriminator = if constructors.len() > 1 {0} else {-1};
         for constr_name in constructors.keys() {
             let mut approx_args = VarInfos::new();
-            Self::create_vars_info(variables, &mut approx_args, old_approx, constr_name, kind, approx)?;
+            Self::create_vars_info(variables, &mut approx_args, old_approx, constr_name, kind, approx_degree)?;
             let old_approx_ref = old_approx.approxs.get(constr_name).unwrap();
             let terms = match kind {
                 SimplificationKind::StaticApprox =>
@@ -885,7 +888,8 @@ impl SimplifiedApprox {
                 SimplificationKind::DynamicApprox =>
                     Self::new_dynamic_term(
                         &approx_args,
-                        dyn_constr_discriminator
+                        dyn_constr_discriminator,
+                        expected_len,
                     ),
                 SimplificationKind::None => Err(Error::from_kind(ErrorKind::Msg(format!(
                     "I was expecting an a simplifiable approximation"
@@ -936,13 +940,18 @@ impl SimplifiedApprox {
         new_terms
     }
 
-    fn new_dynamic_term(new_args: &VarInfos, constructor_discriminator: isize) -> Vec<Term> {
+    fn new_dynamic_term(new_args: &VarInfos, constructor_discriminator: isize, expected_len: usize) -> Vec<Term> {
         let mut new_terms = Vec::new();
         if constructor_discriminator >= 0 {
             new_terms.push(term::int(constructor_discriminator));
         }
         for arg in new_args.iter() {
             new_terms.push(term::int_var(arg.idx));
+        }
+        if new_terms.len() < expected_len {
+            for _ in new_terms.len()..expected_len {
+                new_terms.push(term::int_zero());
+            }
         }
         new_terms
     }
