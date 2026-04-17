@@ -370,7 +370,7 @@ impl std::fmt::Display for TemplateSchedItem {
 }
 
 impl TemplateScheduler {
-    const N_TEMPLATES: usize = 12;
+    const N_TEMPLATES: usize = 18;
 
     const TEMPLATE_SCHEDULING: [TemplateSchedItem; Self::N_TEMPLATES] = [
         TemplateSchedItem {
@@ -379,7 +379,7 @@ impl TemplateScheduler {
         },
         TemplateSchedItem {
             n_encs: 1,
-            typ: TemplateType::BoundIte { min: -1, max: 1 },
+            typ: TemplateType::BoundIte { min: -2, max: 2 },
         },
         TemplateSchedItem {
             n_encs: 2,
@@ -391,7 +391,7 @@ impl TemplateScheduler {
         },
         TemplateSchedItem {
             n_encs: 2,
-            typ: TemplateType::BoundIte { min: -1, max: 1 },
+            typ: TemplateType::BoundIte { min: -2, max: 2 },
         },
         TemplateSchedItem {
             n_encs: 3,
@@ -400,6 +400,10 @@ impl TemplateScheduler {
         TemplateSchedItem {
             n_encs: 3,
             typ: TemplateType::BoundLinear { min: -1, max: 1 },
+        },
+        TemplateSchedItem {
+            n_encs: 3,
+            typ: TemplateType::BoundIte { min: -2, max: 2 },
         },
         TemplateSchedItem {
             n_encs: 3,
@@ -407,7 +411,15 @@ impl TemplateScheduler {
         },
         TemplateSchedItem {
             n_encs: 3,
+            typ: TemplateType::BoundIte { min: -4, max: 4 },
+        },
+        TemplateSchedItem {
+            n_encs: 3,
             typ: TemplateType::BoundLinear { min: -4, max: 4 },
+        },
+        TemplateSchedItem {
+            n_encs: 3,
+            typ: TemplateType::BoundIte { min: -8, max: 8 },
         },
         TemplateSchedItem {
             n_encs: 3,
@@ -415,11 +427,23 @@ impl TemplateScheduler {
         },
         TemplateSchedItem {
             n_encs: 3,
+            typ: TemplateType::BoundIte { min: -64, max: 64 },
+        },
+        TemplateSchedItem {
+            n_encs: 3,
             typ: TemplateType::BoundLinear { min: -64, max: 64 },
         },
         TemplateSchedItem {
             n_encs: 3,
+            typ: TemplateType::BoundIte { min: -128, max: 128 },
+        },
+        TemplateSchedItem {
+            n_encs: 3,
             typ: TemplateType::Linear,
+        },
+        TemplateSchedItem {
+            n_encs: 3,
+            typ: TemplateType::Ite,
         },
     ];
 
@@ -715,7 +739,7 @@ struct IteApprox {
 }
 
 impl IteApprox {
-    const ITE_PART: usize = 3;
+    const ITE_PART: usize = 1;
 
     fn prepare_coefs<S>(varname: S, fvs: &mut VarInfos, n: usize) -> VarMap<VarIdx>
     where
@@ -776,8 +800,8 @@ impl IteApprox {
                         term::add(ite_terms[0].clone()),
                         term::int_zero()
                     ),
-                    term::add(ite_terms[1].clone()),
-                    term::add(ite_terms[2].clone())
+                    term::int_one(),
+                    term::int_zero(),
                 )
             );
             coef.push(coefs);
@@ -1454,7 +1478,7 @@ impl<'a> LearnCtx<'a> {
         Ok(())
     }
 
-    fn get_model(&mut self, timeout: Option<usize>) -> Res<Option<Model>> {
+    fn get_model(&mut self, timeout: Option<usize>, minimise_model: bool) -> Res<Option<Model>> {
         self.solver.reset()?;
         self.define_datatypes()?;
         self.define_enc_funs()?;
@@ -1469,10 +1493,152 @@ impl<'a> LearnCtx<'a> {
         if !b {
             return Ok(None);
         }
-        let model = self.solver.get_model()?;
-        let model = Parser.fix_model(model)?;
+        let raw_model = self.solver.get_model()?;
+        let mut model = Parser.fix_model(raw_model)?;
+        log_debug!("Initial model {}", Model::of_model(&self.cex.vars, model.clone(), true)?);
+        let mut done_minimise = false;
+        while minimise_model && !done_minimise {
+            let is_sat = self.get_model_minimal_size(Some(10), &mut model)
+                .map_or(false, |is_sat| is_sat);
+            if !is_sat {
+                log_debug!("Cannot minimise model any further");
+                done_minimise = true;
+            }
+            else {
+                log_debug!(
+                    "Minimised model: {}",
+                    Model::of_model(&self.cex.vars, model.clone(), true)?
+                );
+            }
+        }
         let cex = Model::of_model(&self.cex.vars, model, true)?;
+        log_debug!("Discovered model is {cex}");
         Ok(Some(cex))
+    }
+
+    fn get_model_minimal_size(
+        &mut self,
+        timeout: Option<usize>,
+        old_model: &mut Vec<(VarIdx, Typ, Val)>
+    ) -> Res<bool> {
+        self.solver.reset()?;
+
+        if let Some(tmo) = timeout {
+            self.solver.set_option(":timeout", &format!("{}000", tmo))?;
+        } else {
+            self.solver.set_option(":timeout", "4294967295")?;
+        }
+
+        self.define_datatypes()?;
+        self.define_enc_funs()?;
+
+        self.define_size_function()?;
+
+        self.define_max_function()?;
+
+        self.cex
+            .define_assert_with_enc(&mut self.solver, &self.original_encs)?;
+
+        self.decrese_model_size_assert(old_model)?;
+
+        let is_sat = self.solver.check_sat()?;
+        if !is_sat {
+            return Ok(false);
+        }
+        let raw_model = self.solver.get_model()?;
+        *old_model = Parser.fix_model(raw_model)?;
+        Ok(true)
+    }
+
+    pub fn define_max_function(&mut self) -> Res<()> {
+        writeln!(
+            self.solver,
+            ";; Max function for the size minimisation"
+        )?;
+        self.solver.define_fun(
+            "max",
+            vec![("x", "Int"), ("y", "Int")],
+            "Int",
+            "(ite (< x y) y x)"
+        )?;
+        Ok(())
+    }
+
+    pub fn decrese_model_size_assert(
+        &mut self,
+        old_model: &[(VarIdx, Typ, Val)],
+    ) -> Res<()> {
+        writeln!(
+            self.solver,
+            "\n;; Decrese the size of at least one term"
+        )?;
+
+        let vars_in_formula = self.cex.consts();
+
+        let mut old_size = term::int_zero();
+        let mut new_size = term::int_zero();
+
+        let find_old_var = |var_idx: &VarIdx| {
+            old_model
+                .iter()
+                .find(|(idx, _, _)| idx == var_idx)
+                .expect("variable not found in old model")
+        };
+
+        let size_functions = |(var_idx, var_typ, var_val): &(VarIdx, Typ, Val)| {
+            let fun_name = format!("size-{}", var_typ);
+            (
+                term::unsafe_fun(&fun_name, vec![term::val(var_val.clone())], typ::int()),
+                term::unsafe_fun(&fun_name, vec![term::var(*var_idx, var_typ.clone())], typ::int())
+            )
+        };
+
+        for var in vars_in_formula.iter() {
+            let (old_fun, new_fun) = size_functions(find_old_var(var));
+            old_size = term::add2(
+                old_fun, old_size.clone()
+            );
+            new_size = term::add2(
+                new_fun, new_size.clone(),
+            );
+            // old_size = term::unsafe_fun(
+            //     "max",
+            //     vec![old_fun, old_size.clone()],
+            //     typ::int()
+            // );
+            // new_size = term::unsafe_fun(
+            //     "max",
+            //     vec![new_fun, new_size.clone()],
+            //     typ::int()
+            // );
+        }
+
+        writeln!(self.solver, "(assert {})", term::lt(new_size, old_size))?;
+
+        Ok(())
+    }
+
+    fn define_size_function(&mut self) -> Res<()> {
+        let mut funs = Vec::new();
+        for enc in self.original_encs.values() {
+            enc.generate_size_fun(&mut funs)?;
+        }
+
+        funs.push(
+            (
+                String::from("size-Int"),
+                typ::int(),
+                term::int_zero()
+            )
+        );
+
+        let funs_strs = funs.into_iter().map(|(funname, ty, term)| {
+            let args = vec![("v_0", ty.to_string())];
+            let body = term.to_string();
+            (funname, args, "Int", body)
+        });
+        self.solver.define_funs_rec(funs_strs)?;
+        Ok(())
     }
 
     fn get_template_model(
@@ -1577,7 +1743,16 @@ impl<'a> LearnCtx<'a> {
             } else {
                 Some(CONSTRAINT_CHECK_TIMEOUT)
             };
-            match self.get_model(timeout) {
+            let uses_ite_templates = self.original_encs.iter()
+                .any(
+                    |(_, enc)|
+                        enc.approxs.iter()
+                        .any(
+                            |(_, approx)|
+                            approx.is_ite_template()
+                        )
+                );
+            match self.get_model(timeout, uses_ite_templates) {
                 // The current cex is refuted
                 Ok(None) => {
                     log_info!("Yes.");

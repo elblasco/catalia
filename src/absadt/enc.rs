@@ -102,6 +102,17 @@ impl Approx {
         }
         self.args = new_signature;
     }
+
+    pub fn is_ite_template(&self) -> bool {
+        self.terms.iter()
+            .any(
+                |term|
+                match term.get() {
+                    RTerm::App { depth: _, typ: _, op: Op::Ite, args:_ } => true,
+                    _ => false,
+                }
+            )
+    }
 }
 
 pub trait Approximation {
@@ -124,7 +135,7 @@ impl Approximation for Approx {
     }
 }
 
- #[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum SimplificationKind {
     None,
     StaticApprox,
@@ -264,6 +275,45 @@ impl<A: Approximation> Enc<A> {
             .collect()
     }
 
+    fn gen_size_body(
+        &self,
+        tag: &str,
+        cont: Option<Term>,
+        target_data: Term,
+    ) -> Term {
+        // 1. main part
+        let mut args = vec![
+            if self.typ.is_recursive().unwrap() {
+                term::int_one()
+            } else {
+                term::int_zero()
+            }
+        ];
+        let (ty, prms) = self.typ.dtyp_inspect().unwrap();
+
+        for (sel, ty) in ty.selectors_of(tag).unwrap().iter() {
+            let ty = ty.to_type(Some(prms)).unwrap();
+            args.push(
+                term::unsafe_fun(
+                    format!("size-{ty}"),
+                    vec![term::dtyp_slc(ty.clone(), sel, target_data.clone())],
+                    typ::int()
+                )
+            );
+        }
+
+        let cont = match cont {
+            Some(cont) => cont,
+            None => term::int_one() ,
+        };
+
+        // 2. ite-part if not last
+        // (ite (is-<tag> target_data) res cont)
+        let check = term::dtyp_tst(tag, target_data);
+        //term::app(Op::Ite, vec![check.clone(), res, cont])
+        term::ite(check, term::add(args), cont)
+    }
+
     /// Define encoding functions in the solver.
     ///
     /// Assumption: Data type `self.typ` has already been defined before.
@@ -289,6 +339,30 @@ impl<A: Approximation> Enc<A> {
             let name = self.get_ith_enc_rdf_name(idx);
             funs.push((name, self.typ.clone(), term))
         }
+
+        Ok(())
+    }
+
+    /// Define size functions in the solver.
+    ///
+    /// Assumption: Data type `self.typ` has already been defined before.
+    pub fn generate_size_fun(
+        &self,
+        funs: &mut Vec<(String, Typ, Term)>,
+    ) -> Res<()> {
+        let mut constructors = self.typ.dtyp_inspect().unwrap().0.news.keys();
+
+        let target_data = term::var(VarIdx::new(0), self.typ.clone());
+
+        let mut terms =
+            self.gen_size_body(constructors.next().unwrap(), None, target_data.clone());
+
+        while let Some(constructor) = constructors.next() {
+            terms = self.gen_size_body(constructor, Some(terms), target_data.clone())
+        }
+
+        let name = format!("size-{}", self.typ.dtyp_inspect().unwrap().0.name.clone());
+        funs.push((name, self.typ.clone(), terms));
 
         Ok(())
     }

@@ -1005,6 +1005,19 @@ impl fmt::Display for CEX {
 }
 
 impl CEX {
+    fn get_encoded_terms<Approx, EncodeVar>
+        (
+            &self,
+            encs: &BTreeMap<Typ, Enc<Approx>>,
+            f: EncodeVar
+        ) -> Vec<Term>
+    where
+        Approx: Approximation,
+        EncodeVar: Fn(&Typ, &VarIdx) -> Vec<Term>,
+    {
+        enc::EncodeCtx::new(encs).encode(&self.term, &f)
+    }
+
     fn define_consts(&self, solver: &mut Solver<Parser>) -> Res<()> {
         for var in self.vars.iter() {
             let mut varset = VarSet::new();
@@ -1016,6 +1029,19 @@ impl CEX {
         }
         Ok(())
     }
+
+    pub fn consts(&self) -> VarSet {
+        let mut used_vars = VarSet::new();
+        for var in self.vars.iter() {
+            let mut varset = VarSet::new();
+            varset.insert(var.idx);
+            if self.term.mentions_one_of(&varset) {
+                used_vars.insert(var.idx);
+            }
+        }
+        used_vars
+    }
+
     pub fn define_assert_with_enc<Approx: Approximation>(
         &self,
         solver: &mut Solver<Parser>,
@@ -1023,17 +1049,40 @@ impl CEX {
     ) -> Res<()> {
         self.define_consts(solver)?;
 
-        let enc_ctx = enc::EncodeCtx::new(encs);
-        let f = |typ: &Typ, var| match encs.get(&typ) {
-            Some(enc) => enc.encode_var_with_rdf(var),
-            None => vec![term::var(*var, typ.clone())],
-        };
-        let terms = enc_ctx.encode(&self.term, &f);
+        let terms = self.get_encoded_terms(
+            encs,
+            |typ: &Typ, var| match encs.get(&typ) {
+                Some(enc) => enc.encode_var_with_rdf(var),
+                None => vec![term::var(*var, typ.clone())],
+            }
+        );
 
         let t = term::and(terms);
 
         writeln!(solver, "(assert {})", t)?;
         writeln!(solver)?;
+
+        Ok(())
+    }
+
+    pub fn minimised_assert_with_enc<Approx: Approximation>(
+        &self,
+        solver: &mut Solver<Parser>,
+        encs: &BTreeMap<Typ, Enc<Approx>>,
+    ) -> Res<()> {
+        let encoded_terms = term::and(self.get_encoded_terms(
+            encs,
+            |typ: &Typ, var| match encs.get(&typ) {
+                Some(enc) => enc.encode_var_with_rdf(var),
+                None => vec![term::var(*var, typ.clone())],
+            }
+        ));
+
+        for var in self.vars.iter() {
+            solver.declare_const(&format!("v_{}", var.idx), &var.typ.to_string())?;
+        }
+
+        writeln!(solver, "(assert {})", encoded_terms)?;
 
         Ok(())
     }

@@ -1,10 +1,10 @@
 //! Everything type-related.
 
 use hashconsing::{HConsed, HashConsign};
-
 use crate::{
     common::*,
-    dtyp::{PartialTyp, RDTyp, TPrmMap},
+    dtyp::TPrmMap,
+    errors::ErrorKind,
 };
 
 hashconsing::consign! {
