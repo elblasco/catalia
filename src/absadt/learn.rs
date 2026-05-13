@@ -1151,46 +1151,123 @@ fn test_ite_approx_apply() {
     for arg in args.iter() {
         fvs.push(arg.clone());
     }
-    let approx = IteApprox::new(args, 1, &mut fvs, None, None);
+    let approx = IteApprox::new(args, 1, &mut fvs, None, None, false);
     let x = term::val(val::int(4));
     let argss = vec![x.clone()];
-    let mut t = approx.apply(&argss);
+    let t = approx.apply(&argss);
 
     assert_eq!(t.len(), 1);
-    let t = t.remove(0);
+    let t = t[0].clone();
     let coef_idx = approx.coef[0].clone();
     let cnst_idx = approx.cnst.get(0).unwrap().clone();
     let mut t2_terms = Vec::new();
 
-    for (cnst,coef) in cnst_idx.iter().zip(coef_idx.iter()){
+    for (cnst, coefs) in cnst_idx.iter().zip(coef_idx.chunks(argss.len())) {
+        let mut sum_args_coefs: Vec<Term> = Vec::new();
+        for (coef, arg) in coefs.iter().zip(argss.iter()) {
+            sum_args_coefs.push(
+                term::mul(
+                    vec![
+                        term::int_var(*coef),
+                        arg.clone()
+                    ]
+                )
+            );
+        }
         t2_terms.push(
             term::add2(
-                term::mul(vec![
-                    term::var(*coef, typ::int()),
-                    x.clone()
-                ]),
-                term::var(*cnst, typ::int())
+                term::int_var(*cnst),
+                term::add(sum_args_coefs)
             )
         );
     }
 
     let t2 = term::ite(
-        term::gt(t2_terms[0].clone(), t2_terms[1].clone()),
-        t2_terms[2].clone(),
-        t2_terms[3].clone()
+        term::ge(t2_terms[0].clone(), term::int_zero()),
+        t2_terms[1].clone(),
+        t2_terms[2].clone()
     );
-    println!("t: {}", t);
-    println!("t2: {}", t2);
+    println!("t: {t}");
+    println!("t2: {t2}");
 
     let subst: VarHMap<_> = vec![
         (VarIdx::from(1), term::val(val::int(4i64))),
         (VarIdx::from(2), term::val(val::int(3i64))),
         (VarIdx::from(3), term::val(val::int(1))),
         (VarIdx::from(4), term::val(val::int(2))),
-        (VarIdx::from(5), term::val(val::int(-4))),
+        (VarIdx::from(5), term::val(val::int(-1))),
         (VarIdx::from(6), term::val(val::int(0))),
-        (VarIdx::from(7), term::val(val::int(8))),
-        (VarIdx::from(8), term::val(val::int(-32)))
+    ].into_iter().collect();
+
+    assert_eq!(
+        t.subst_total(&subst).unwrap().0.as_val(),
+        t2.subst_total(&subst).unwrap().0.as_val()
+    );
+}
+
+#[test]
+fn test_structed_ite_approx_apply() {
+    let mut args = VarInfos::new();
+    let idx = VarIdx::from(0);
+    args.push(VarInfo::new("x".to_string(), typ::int(), idx));
+    let mut fvs = VarInfos::new();
+    // mimic TemplateInfo behavior: template parameters start after the argument indices
+    for arg in args.iter() {
+        fvs.push(arg.clone());
+    }
+    let approx = IteApprox::new(args, 1, &mut fvs, None, None, true);
+    let x = term::val(val::int(4));
+    let argss = vec![x.clone()];
+    let t = approx.apply(&argss);
+
+    assert_eq!(t.len(), 1);
+    let t = t[0].clone();
+    let coef_idx = approx.coef[0].clone();
+    let cnst_idx = approx.cnst.get(0).unwrap().clone();
+    let mut t2_terms = Vec::new();
+
+    for (idx, cnst) in cnst_idx.iter().enumerate() {
+        // boolean condition
+        if idx == 0 {
+            let mut sum_args_coefs: Vec<Term> = Vec::new();
+            for (coef, arg) in coef_idx.iter().zip(argss.iter()) {
+                sum_args_coefs.push(
+                    term::mul(
+                        vec![
+                            term::int_var(*coef),
+                            arg.clone()
+                        ]
+                    )
+                );
+            }
+            t2_terms.push(
+                term::add2(
+                    term::int_var(*cnst),
+                    term::add(sum_args_coefs)
+                )
+            );
+        }
+        // branches
+        else {
+            t2_terms.push(
+                term::int_var(*cnst)
+            );
+        }
+    }
+
+    let t2 = term::ite(
+        term::ge(t2_terms[0].clone(), term::int_zero()),
+        t2_terms[1].clone(),
+        t2_terms[2].clone()
+    );
+    println!("t: {t}");
+    println!("t2: {t2}");
+
+    let subst: VarHMap<_> = vec![
+        (VarIdx::from(1), term::val(val::int(4i64))),
+        (VarIdx::from(2), term::val(val::int(3i64))),
+        (VarIdx::from(3), term::val(val::int(1))),
+        (VarIdx::from(4), term::val(val::int(2))),
     ].into_iter().collect();
 
     assert_eq!(
