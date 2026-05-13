@@ -376,7 +376,7 @@ impl std::fmt::Display for TemplateSchedItem {
 }
 
 impl TemplateScheduler {
-    const N_TEMPLATES: usize = 18;
+    const N_TEMPLATES: usize = 19;
 
     const TEMPLATE_SCHEDULING: [TemplateSchedItem; Self::N_TEMPLATES] = [
         TemplateSchedItem {
@@ -385,7 +385,11 @@ impl TemplateScheduler {
         },
         TemplateSchedItem {
             n_encs: 1,
-            typ: TemplateType::BoundIte { min: -2, max: 2 },
+            typ: TemplateType::BoundStructuredIte { min: -2, max: 2 },
+        },
+        TemplateSchedItem {
+            n_encs: 1,
+            typ: TemplateType::BoundIte { min: -1, max: 1 },
         },
         TemplateSchedItem {
             n_encs: 2,
@@ -397,7 +401,11 @@ impl TemplateScheduler {
         },
         TemplateSchedItem {
             n_encs: 2,
-            typ: TemplateType::BoundIte { min: -2, max: 2 },
+            typ: TemplateType::BoundIte { min: -1, max: 1 },
+        },
+        TemplateSchedItem {
+            n_encs: 2,
+            typ: TemplateType::BoundStructuredIte { min: -4, max: 4 },
         },
         TemplateSchedItem {
             n_encs: 3,
@@ -406,10 +414,6 @@ impl TemplateScheduler {
         TemplateSchedItem {
             n_encs: 3,
             typ: TemplateType::BoundLinear { min: -1, max: 1 },
-        },
-        TemplateSchedItem {
-            n_encs: 3,
-            typ: TemplateType::BoundIte { min: -2, max: 2 },
         },
         TemplateSchedItem {
             n_encs: 3,
@@ -417,7 +421,7 @@ impl TemplateScheduler {
         },
         TemplateSchedItem {
             n_encs: 3,
-            typ: TemplateType::BoundIte { min: -4, max: 4 },
+            typ: TemplateType::BoundIte { min: -2, max: 2 },
         },
         TemplateSchedItem {
             n_encs: 3,
@@ -425,7 +429,7 @@ impl TemplateScheduler {
         },
         TemplateSchedItem {
             n_encs: 3,
-            typ: TemplateType::BoundIte { min: -8, max: 8 },
+            typ: TemplateType::BoundStructuredIte { min: -8, max: 8 }
         },
         TemplateSchedItem {
             n_encs: 3,
@@ -433,7 +437,7 @@ impl TemplateScheduler {
         },
         TemplateSchedItem {
             n_encs: 3,
-            typ: TemplateType::BoundIte { min: -64, max: 64 },
+            typ: TemplateType::BoundStructuredIte { min: -64, max: 64 },
         },
         TemplateSchedItem {
             n_encs: 3,
@@ -441,7 +445,7 @@ impl TemplateScheduler {
         },
         TemplateSchedItem {
             n_encs: 3,
-            typ: TemplateType::BoundIte { min: -128, max: 128 },
+            typ: TemplateType::BoundStructuredIte { min: -128, max: 128 },
         },
         TemplateSchedItem {
             n_encs: 3,
