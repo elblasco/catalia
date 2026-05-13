@@ -1414,11 +1414,11 @@ impl<'a> LearnCtx<'a> {
             return Ok(None);
         }
         let raw_model = self.solver.get_model()?;
-        let mut model = Parser.fix_model(raw_model)?;
-        log_debug!("Initial model {}", Model::of_model(&self.cex.vars, model.clone(), true)?);
+        let mut model = Model::of_model(&self.cex.vars, Parser.fix_model(raw_model)?, true)?;
+        log_debug!("Initial model {}", model);
         let mut done_minimise = false;
         while minimise_model && !done_minimise {
-            let is_sat = self.get_model_minimal_size(Some(10), &mut model)
+            let is_sat = self.try_minimise_model(Some(1), &mut model)
                 .map_or(false, |is_sat| is_sat);
             if !is_sat {
                 log_debug!("Cannot minimise model any further");
@@ -1427,19 +1427,17 @@ impl<'a> LearnCtx<'a> {
             else {
                 log_debug!(
                     "Minimised model: {}",
-                    Model::of_model(&self.cex.vars, model.clone(), true)?
+                    model
                 );
             }
         }
-        let cex = Model::of_model(&self.cex.vars, model, true)?;
-        log_debug!("Discovered model is {cex}");
-        Ok(Some(cex))
+        Ok(Some(model))
     }
 
-    fn get_model_minimal_size(
+    fn try_minimise_model(
         &mut self,
         timeout: Option<usize>,
-        old_model: &mut Vec<(VarIdx, Typ, Val)>
+        old_model: &mut Cex
     ) -> Res<bool> {
         self.solver.reset()?;
 
@@ -1454,8 +1452,6 @@ impl<'a> LearnCtx<'a> {
 
         self.define_size_function()?;
 
-        self.define_max_function()?;
-
         self.cex
             .define_assert_with_enc(&mut self.solver, &self.original_encs)?;
 
@@ -1465,8 +1461,13 @@ impl<'a> LearnCtx<'a> {
         if !is_sat {
             return Ok(false);
         }
-        let raw_model = self.solver.get_model()?;
-        *old_model = Parser.fix_model(raw_model)?;
+        *old_model = Model::of_model(
+            &self.cex.vars,
+            Parser.fix_model(
+                self.solver.get_model()?
+            )?,
+            true
+        )?;
         Ok(true)
     }
 
@@ -1486,7 +1487,7 @@ impl<'a> LearnCtx<'a> {
 
     pub fn decrese_model_size_assert(
         &mut self,
-        old_model: &[(VarIdx, Typ, Val)],
+        old_model: &Cex,
     ) -> Res<()> {
         writeln!(
             self.solver,
@@ -1498,39 +1499,23 @@ impl<'a> LearnCtx<'a> {
         let mut old_size = term::int_zero();
         let mut new_size = term::int_zero();
 
-        let find_old_var = |var_idx: &VarIdx| {
-            old_model
-                .iter()
-                .find(|(idx, _, _)| idx == var_idx)
-                .expect("variable not found in old model")
-        };
-
-        let size_functions = |(var_idx, var_typ, var_val): &(VarIdx, Typ, Val)| {
-            let fun_name = format!("size-{}", var_typ);
+        let size_functions = |(var_idx, var_val): &(&VarIdx, &Val)| {
+            let fun_name = format!("size-{}", var_val.typ());
             (
-                term::unsafe_fun(&fun_name, vec![term::val(var_val.clone())], typ::int()),
-                term::unsafe_fun(&fun_name, vec![term::var(*var_idx, var_typ.clone())], typ::int())
+                term::unsafe_fun(&fun_name, vec![term::val((**var_val).clone())], typ::int()),
+                term::unsafe_fun(&fun_name, vec![term::var(**var_idx, var_val.typ())], typ::int())
             )
         };
 
         for var in vars_in_formula.iter() {
-            let (old_fun, new_fun) = size_functions(find_old_var(var));
+            let old_val = &old_model[*var];
+            let (model_val_size, var_size) = size_functions(&(var, old_val));
             old_size = term::add2(
-                old_fun, old_size.clone()
-            );
+                model_val_size, old_size.clone()
+                );
             new_size = term::add2(
-                new_fun, new_size.clone(),
+                var_size, new_size.clone(),
             );
-            // old_size = term::unsafe_fun(
-            //     "max",
-            //     vec![old_fun, old_size.clone()],
-            //     typ::int()
-            // );
-            // new_size = term::unsafe_fun(
-            //     "max",
-            //     vec![new_fun, new_size.clone()],
-            //     typ::int()
-            // );
         }
 
         writeln!(self.solver, "(assert {})", term::lt(new_size, old_size))?;
@@ -1663,16 +1648,7 @@ impl<'a> LearnCtx<'a> {
             } else {
                 Some(CONSTRAINT_CHECK_TIMEOUT)
             };
-            let uses_ite_templates = self.original_encs.iter()
-                .any(
-                    |(_, enc)|
-                        enc.approxs.iter()
-                        .any(
-                            |(_, approx)|
-                            approx.is_ite_template()
-                        )
-                );
-            match self.get_model(timeout, uses_ite_templates) {
+            match self.get_model(timeout, true) {
                 // The current cex is refuted
                 Ok(None) => {
                     log_info!("Yes.");
