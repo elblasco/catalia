@@ -171,6 +171,23 @@ impl RTyp {
         }
     }
 
+    pub fn is_adt_nat_like(&self) -> Res<bool> {
+        if let Some((adt_dtyp, paramters)) = self.dtyp_inspect() {
+            Ok(
+                adt_dtyp.news.len() == 2 &&
+                    adt_dtyp.news.iter().any(|(_, args)| args.is_empty()) &&
+                    adt_dtyp.news.iter().any(|(_, args)| {
+                        args.len() == 1 &&
+                            args.first().unwrap().1.to_type(Some(paramters)).unwrap().get() == self
+                    }),
+            )
+        } else {
+            Err(Error::from_kind(ErrorKind::Msg(format!(
+                "I was expecting an ADT found {self}"
+            ))))
+        }
+    }
+
     /// Returns the set of depth 1 dependencies for the current [`RTyp`].
     ///
     /// *depth 1 dependencies* encompasses only the types used in the [`RTyp`]

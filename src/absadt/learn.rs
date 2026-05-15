@@ -999,6 +999,16 @@ impl SimplifiedApprox {
                         .idx;
                     new_terms.push(RTerm::Var(typ.clone(), new_idx).to_hcons());
                 }
+                RTerm::App { depth, typ, op, args } => {
+                    new_terms.push(
+                        RTerm::App {
+                            depth: *depth,
+                            typ: typ.clone(),
+                            op: *op,
+                            args: Self::shift_body_indices(new_args, old_args, args)
+                        }.to_hcons()
+                    );
+                }
                 _ => {}
             }
         }

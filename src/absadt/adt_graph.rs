@@ -108,7 +108,8 @@ impl ADTDependencyGraph {
             changed = false;
             for (typ, deps) in dependencies.iter() {
                 if !return_vec.contains(typ) {
-                    if deps
+                    if (!matches!(typ.get(), RTyp::Int) && typ.is_adt_nat_like().unwrap()) ||
+                        deps
                         .iter()
                         .all(|dep| matches!(dep.get(), RTyp::Int) || return_vec.contains(dep))
                     {
@@ -225,6 +226,9 @@ impl ADTDependencyGraph {
 
         // Expanding the approximation body
         for (typ, approx_deg) in simplifiable.iter() {
+            if typ.is_adt_nat_like().is_ok_and(|res| res) {
+                continue;
+            }
             let enc = encs.get_mut(&typ).unwrap();
             enc.n_params = *approx_deg;
             enc.simplification = match category_to_flatten {

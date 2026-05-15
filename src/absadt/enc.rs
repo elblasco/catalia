@@ -84,6 +84,26 @@ impl Approx {
         }
     }
 
+    pub fn nat_zero() -> Self {
+        Self {
+            args: VarInfos::new(),
+            terms: vec![term::int_zero()],
+        }
+    }
+
+    pub fn nat_succ() -> Self {
+        let mut infos = VarInfos::new();
+
+        let n_idx = infos.next_index();
+        let info = VarInfo::new("n".to_string(), typ::int(), n_idx);
+        infos.push(info);
+
+        Self {
+            args: infos,
+            terms: vec![term::add2(term::int_var(n_idx), term::int_one())],
+        }
+    }
+
     pub fn expand_signature(
         &mut self,
         simplifications: &BTreeMap<Typ, usize>,
@@ -179,6 +199,26 @@ where
 }
 
 pub type Encoder = Enc<Approx>;
+
+impl Encoder {
+    pub fn simplify_nat_like(&mut self) -> Res<()> {
+        self.simplification = SimplificationKind::StaticApprox;
+        self.n_params = 1;
+        let mut new_approxes: BTreeMap<String, Approx> = BTreeMap::new();
+        for constr in self.typ.dtyp_inspect().unwrap().0.news.iter() {
+            new_approxes.insert(
+                constr.0.clone(),
+                if constr.1.len() == 0 {
+                    Approx::nat_zero()
+                } else {
+                    Approx::nat_succ()
+                }
+            );
+        }
+        self.approxs = new_approxes;
+        Ok(())
+    }
+}
 
 impl<A: Approximation> Enc<A> {
     fn generate_fun_name(&self) -> String {

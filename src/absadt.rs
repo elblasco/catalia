@@ -137,6 +137,16 @@ impl<'original> AbsConf<'original> {
         })
     }
 
+    fn flatten_nat_like_adt(&mut self) -> Res<()> {
+        for (typ, enc) in self.encs.iter_mut() {
+            if typ.is_adt_nat_like()? {
+                log_debug!("{typ} is like a Nat");
+                enc.simplify_nat_like()?;
+            }
+        }
+        Ok(())
+    }
+
     fn flatten_non_recursive_adt(&mut self) -> Res<()> {
         self.dependency_graph.flatten_adt(&mut self.encs, Category::Static)?;
         self.dependency_graph.flatten_adt(&mut self.encs, Category::Dynamic)?;
@@ -299,6 +309,7 @@ impl<'original> AbsConf<'original> {
             }
         }
 
+        self.flatten_nat_like_adt()?;
         self.flatten_non_recursive_adt()?;
 
         let r = loop {
