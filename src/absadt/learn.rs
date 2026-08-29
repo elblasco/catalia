@@ -1567,13 +1567,12 @@ impl<'a> LearnCtx<'a> {
 
         self.define_datatypes()?;
         self.define_enc_funs()?;
-
         self.define_size_function()?;
-
+        self.define_max_function(old_model)?;
         self.cex
-            .define_assert_with_enc(&mut self.solver, &self.original_encs)?;
-
-        self.decrese_model_size_assert(old_model)?;
+             .define_assert_with_enc(&mut self.solver, &self.original_encs)?;
+            // .define_assert_with_enc(&mut self.solver, self.template_scheduler.get_enc())?;
+        self.decrese_model_size_assert_with_max(old_model)?;
 
         let is_sat = self.solver.check_sat()?;
         if !is_sat {
@@ -1589,17 +1588,39 @@ impl<'a> LearnCtx<'a> {
         Ok(true)
     }
 
-    pub fn define_max_function(&mut self) -> Res<()> {
+    pub fn define_max_function(&mut self, old_model: &Cex) -> Res<()> {
         writeln!(
             self.solver,
             ";; Max function for the size minimisation"
         )?;
-        self.solver.define_fun(
-            "max",
-            vec![("x", "Int"), ("y", "Int")],
-            "Int",
-            "(ite (< x y) y x)"
-        )?;
+
+        let size_terms: Vec<_> = self
+            .cex
+            .consts()
+            .iter()
+            .filter_map(|elem| {
+                let old_model_val = &old_model[*elem];
+                old_model_val.typ().get().is_dtyp().then(|| {
+                    term::lt(
+                        term::int_var(0),
+                        term::unsafe_fun(
+                            format!("size-{}", old_model_val.typ()),
+                            vec![term::val(old_model_val.clone())],
+                            typ::int(),
+                        ),
+                    )
+                })
+            })
+            .collect();
+
+        let fun_body = if size_terms.is_empty() {
+            term::fls()
+        } else {
+            term::or(size_terms)
+        };
+        
+        self.solver
+            .define_fun("max", &[("v_0", "Int")], "Bool", fun_body.to_string())?;
         Ok(())
     }
 
@@ -1627,13 +1648,15 @@ impl<'a> LearnCtx<'a> {
 
         for var in vars_in_formula.iter() {
             let old_val = &old_model[*var];
-            let (model_val_size, var_size) = size_functions(&(var, old_val));
-            old_size = term::add2(
-                model_val_size, old_size.clone()
+            if old_val.typ().is_dtyp(){
+                let (model_val_size, var_size) = size_functions(&(var, old_val));
+                old_size = term::add2(
+                    model_val_size, old_size.clone()
                 );
-            new_size = term::add2(
-                var_size, new_size.clone(),
-            );
+                new_size = term::add2(
+                    var_size, new_size.clone(),
+                );
+            }
         }
 
         writeln!(self.solver, "(assert {})", term::lt(new_size, old_size))?;
@@ -1641,9 +1664,49 @@ impl<'a> LearnCtx<'a> {
         Ok(())
     }
 
+    pub fn decrese_model_size_assert_with_max(
+        &mut self,
+        old_model: &Cex,
+    ) -> Res<()> {
+        writeln!(
+            self.solver,
+            "\n;; Decrese the size of at least one term"
+        )?;
+
+        let max_terms: Vec<_> = self
+            .cex
+            .consts()
+            .iter()
+            .filter_map(|elem| {
+                let elem_typ = old_model[*elem].typ();
+                elem_typ.get().is_dtyp().then(|| {
+                    term::unsafe_fun(
+                    "max",
+                        vec![term::unsafe_fun(
+                        format!("size-{elem_typ}"),
+                            vec![term::var(*elem, elem_typ)],
+                            typ::int(),
+                        )],
+                        typ::bool(),
+                    )
+                })
+            })
+            .collect();
+
+        let vars_in_formula = if max_terms.is_empty() {
+            term::tru()
+        } else {
+            term::and(max_terms)
+        };
+
+        writeln!(self.solver, "(assert {vars_in_formula})")?;
+        Ok(())
+    }
+
     fn define_size_function(&mut self) -> Res<()> {
         let mut funs = Vec::new();
         for enc in self.original_encs.values() {
+        //for enc in self.template_scheduler.get_enc().values() {
             enc.generate_size_fun(&mut funs)?;
         }
 
