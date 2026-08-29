@@ -157,6 +157,18 @@ impl<'original> AbsConf<'original> {
         Ok(())
     }
 
+    fn discriminate_constructors(&mut self) -> Res<()> {
+        for (typ, enc) in self.encs.iter_mut() {
+            if !(
+                self.dependency_graph.is_statically_simplifiable(typ) ||
+                    self.dependency_graph.is_dynamically_simplifiable(typ)
+            ){
+                    enc.discriminate_constructor()?;
+            }
+        }
+        Ok(())
+    }
+
     fn initialize_encs(&mut self) -> Res<()> {
         let instance = &self.instance;
         for c in instance.clauses.iter() {
@@ -311,6 +323,7 @@ impl<'original> AbsConf<'original> {
 
         self.flatten_nat_like_adt()?;
         self.flatten_non_recursive_adt()?;
+        self.discriminate_constructors()?;
 
         let r = loop {
             self.epoch += 1;

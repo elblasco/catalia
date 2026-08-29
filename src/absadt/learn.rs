@@ -138,7 +138,7 @@ impl TemplateInfo {
         max: Option<i64>,
         structured: bool,
     ) {
-        for constr in typ.dtyp_inspect().unwrap().0.news.keys() {
+        for (discriminator, constr) in typ.dtyp_inspect().unwrap().0.news.keys().enumerate() {
             // for each constructor, we prepare an approx
             let (ty, prms) = typ.dtyp_inspect().unwrap();
             // prepare function arguments
@@ -147,20 +147,9 @@ impl TemplateInfo {
             for (sel, ty) in ty.selectors_of(constr).unwrap().iter() {
                 let ty = ty.to_type(Some(prms)).unwrap();
                 let is_recursive = encs.get(&ty).is_some();
-                let n_arg = match encs.get(&ty) {
-                    Some(enc) => {
-                        if matches!(
-                            enc.simplification,
-                            SimplificationKind::StaticApprox |
-                            SimplificationKind::DynamicApprox
-                        ) {
-                            enc.n_params
-                        } else {
-                            n_encs
-                        }
-                    }
-                    None => 1,
-                };
+                let n_arg = if let Some(enc) = encs.get(&ty) {
+                    enc.get_n_params(n_encs)
+                } else {1};
                 if !is_recursive {
                     assert!(ty.is_int());
                 }
@@ -182,6 +171,7 @@ impl TemplateInfo {
                 Template::Linear(LinearApprox::new(
                     approx_args,
                     n_encs,
+                    discriminator,
                     &mut variables,
                     min,
                     max,
@@ -252,19 +242,16 @@ impl TemplateInfo {
         max: Option<i64>,
         structured: bool,
     ) {
-        for constr in typ.dtyp_inspect().unwrap().0.news.keys() {
+        for (discriminator, constr) in typ.dtyp_inspect().unwrap().0.news.keys().enumerate() {
             // for each constructor, we prepare an approx
             let (ty, prms) = typ.dtyp_inspect().unwrap();
             // prepare function arguments
             let mut approx_args = VarInfos::new();
             for (sel, ty) in ty.selectors_of(constr).unwrap().iter() {
                 let ty = ty.to_type(Some(prms)).unwrap();
-                let n_arg = if encs.get(&ty).is_some() {
-                    n_encs
-                } else {
-                    assert!(ty.is_int());
-                    1
-                };
+                let n_arg = if let Some(enc) = encs.get(&ty) {
+                    enc.get_n_params(n_encs)
+                } else {1};
                 for i in 0..n_arg {
                     let next_index = variables.next_index();
                     let info = VarInfo::new(
@@ -282,6 +269,7 @@ impl TemplateInfo {
                 Template::Ite(IteApprox::new(
                     approx_args,
                     n_encs,
+                    discriminator,
                     &mut variables,
                     min,
                     max,
@@ -380,79 +368,79 @@ impl TemplateScheduler {
 
     const TEMPLATE_SCHEDULING: [TemplateSchedItem; Self::N_TEMPLATES] = [
         TemplateSchedItem {
-            n_encs: 1,
+            n_encs: 2,
             typ: TemplateType::BoundLinear { min: -1, max: 1 },
         },
         TemplateSchedItem {
-            n_encs: 1,
+            n_encs: 2,
             typ: TemplateType::BoundStructuredIte { min: -2, max: 2 },
         },
         TemplateSchedItem {
-            n_encs: 1,
+            n_encs: 2,
             typ: TemplateType::BoundIte { min: -1, max: 1 },
         },
         TemplateSchedItem {
-            n_encs: 2,
+            n_encs: 3,
             typ: TemplateType::BoundStructuredLinear { min: -1, max: 1 },
         },
         TemplateSchedItem {
-            n_encs: 2,
+            n_encs: 3,
             typ: TemplateType::BoundLinear { min: -1, max: 1 },
         },
         TemplateSchedItem {
-            n_encs: 2,
+            n_encs: 3,
             typ: TemplateType::BoundIte { min: -1, max: 1 },
         },
         TemplateSchedItem {
-            n_encs: 2,
+            n_encs: 3,
             typ: TemplateType::BoundStructuredIte { min: -4, max: 4 },
         },
         TemplateSchedItem {
-            n_encs: 3,
+            n_encs: 4,
             typ: TemplateType::BoundStructuredLinear { min: -1, max: 1 },
         },
         TemplateSchedItem {
-            n_encs: 3,
+            n_encs: 4,
             typ: TemplateType::BoundLinear { min: -1, max: 1 },
         },
         TemplateSchedItem {
-            n_encs: 3,
+            n_encs: 4,
             typ: TemplateType::BoundLinear { min: -2, max: 2 },
         },
         TemplateSchedItem {
-            n_encs: 3,
+            n_encs: 4,
             typ: TemplateType::BoundIte { min: -2, max: 2 },
         },
         TemplateSchedItem {
-            n_encs: 3,
+            n_encs: 4,
             typ: TemplateType::BoundLinear { min: -4, max: 4 },
         },
         TemplateSchedItem {
-            n_encs: 3,
+            n_encs: 4,
             typ: TemplateType::BoundStructuredIte { min: -8, max: 8 }
         },
         TemplateSchedItem {
-            n_encs: 3,
+            n_encs: 4,
             typ: TemplateType::BoundLinear { min: -32, max: 32 },
         },
         TemplateSchedItem {
-            n_encs: 3,
+            n_encs: 4,
             typ: TemplateType::BoundStructuredIte { min: -64, max: 64 },
         },
         TemplateSchedItem {
-            n_encs: 3,
+            n_encs: 4,
             typ: TemplateType::BoundLinear { min: -64, max: 64 },
         },
         TemplateSchedItem {
-            n_encs: 3,
+            n_encs: 4,
             typ: TemplateType::BoundStructuredIte { min: -128, max: 128 },
         },
         TemplateSchedItem {
-            n_encs: 3,
+            n_encs: 4,
             typ: TemplateType::Linear,
         },
         TemplateSchedItem {
-            n_encs: 3,
+            n_encs: 4,
             typ: TemplateType::Ite,
         },
     ];
@@ -673,6 +661,7 @@ impl LinearApprox {
     fn new(
         args: VarInfos,
         n_encs: usize,
+        constructor_discriminator: usize,
         variables: &mut VarInfos,
         min: Option<i64>,
         max: Option<i64>,
@@ -684,9 +673,9 @@ impl LinearApprox {
 
         let mut coef = Vec::with_capacity(n_encs);
         let mut cnst = VarMap::new();
-        let mut terms = Vec::new();
+        let mut terms = vec![term::int(constructor_discriminator)];
         let enforce_recursive_dependency = structured;
-        for term_idx in 0..n_encs {
+        for term_idx in 1..n_encs {
             // prepare coefficients
             let varname = format!("coef-term-{term_idx}");
             let mut coefs: VarMap<Option<VarIdx>> = VarMap::new();
@@ -779,6 +768,7 @@ impl IteApprox {
     fn new(
         args: VarInfos,
         n_encs: usize,
+        discriminator: usize,
         variables: &mut VarInfos,
         min: Option<i64>,
         max: Option<i64>,
@@ -786,8 +776,8 @@ impl IteApprox {
     ) -> Self {
         let mut coef = Vec::with_capacity(n_encs);
         let mut cnst = VarMap::new();
-        let mut terms = Vec::new();
-        for term_idx in 0..n_encs {
+        let mut terms = vec![term::int(discriminator)];
+        for term_idx in 1..n_encs {
             // prepare coefficients
             let name = format!("coef-term-{term_idx}");
             let n_coefs = args.len() * if structured {1} else {Self::ITE_PART};

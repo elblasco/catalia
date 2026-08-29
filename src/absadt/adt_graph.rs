@@ -100,6 +100,14 @@ impl ADTDependencyGraph {
         })
     }
 
+    pub fn is_dynamically_simplifiable(&self, typ: &Typ) -> bool {
+        self.dynamically_simplifiable.contains(typ)
+    }
+
+    pub fn is_statically_simplifiable(&self, typ: &Typ) -> bool {
+        self.statically_simplifiable.contains(typ)
+    }
+
     fn init_statically_simplifiable(dependencies: &BTreeMap<Typ, BTreeSet<Typ>>) -> BTreeSet<Typ> {
         let mut return_vec = BTreeSet::new();
         let mut changed = true;

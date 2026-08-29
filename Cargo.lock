@@ -71,6 +71,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
 
 [[package]]
+name = "catalia"
+version = "1.2.0"
+dependencies = [
+ "ansi_term",
+ "atty",
+ "clap",
+ "command-group",
+ "either",
+ "error-chain",
+ "hashconsing",
+ "lazy_static",
+ "lexpr",
+ "libc",
+ "mylib",
+ "num",
+ "rand",
+ "rand_xorshift",
+ "rsmt2",
+]
+
+[[package]]
 name = "cc"
 version = "1.0.73"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -172,27 +193,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62b467343b94ba476dcb2500d242dadbb39557df889310ac77c5d99100aaac33"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "hoice"
-version = "1.10.0"
-dependencies = [
- "ansi_term",
- "atty",
- "clap",
- "command-group",
- "either",
- "error-chain",
- "hashconsing",
- "lazy_static",
- "lexpr",
- "libc",
- "mylib",
- "num",
- "rand",
- "rand_xorshift",
- "rsmt2",
 ]
 
 [[package]]

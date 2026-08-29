@@ -1,5 +1,6 @@
 use crate::common::*;
 use crate::info::VarInfo;
+use crate::dtyp::PartialTyp;
 
 const ENC_TAG: &str = "enc!";
 
@@ -101,6 +102,21 @@ impl Approx {
         Self {
             args: infos,
             terms: vec![term::add2(term::int_var(n_idx), term::int_one())],
+        }
+    }
+
+    pub fn initialise_with_constr_discriminator(discriminator: usize, args: &Vec<(String, PartialTyp)>) -> Self {
+        let mut infos = VarInfos::new();
+
+        for arg in args.iter() {
+            let n_idx = infos.next_index();
+            let info = VarInfo::new(arg.0.clone(), typ::int(), n_idx);
+            infos.push(info);
+        }
+
+        Self{
+            args: infos,
+            terms: vec![term::int(discriminator), term::int_zero()],
         }
     }
 
@@ -217,6 +233,30 @@ impl Encoder {
         }
         self.approxs = new_approxes;
         Ok(())
+    }
+
+    pub fn discriminate_constructor(&mut self) -> Res<()> {
+        self.n_params = 2;
+        let mut new_approxes: BTreeMap<String, Approx> = BTreeMap::new();
+        for (idx, constr) in self.typ.dtyp_inspect().unwrap().0.news.iter().enumerate() {
+            new_approxes.insert(
+                constr.0.clone(),
+                Approx::initialise_with_constr_discriminator(idx, constr.1)
+            );
+        }
+        self.approxs = new_approxes;
+        Ok(())
+    }
+
+    /// Take into consideration both the approximation degree and the
+    /// constructor discriminator
+    pub fn get_n_params(&self, template_degree: usize) -> usize {
+        match self.simplification {
+            SimplificationKind::StaticApprox |
+            SimplificationKind::DynamicApprox =>
+                self.n_params,
+            SimplificationKind::None => template_degree,
+        }
     }
 }
 
